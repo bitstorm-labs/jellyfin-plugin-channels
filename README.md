@@ -118,9 +118,23 @@ Details that are load-bearing rather than incidental:
 because `Jellyfin.Controller` 12.1.0 ships net10.0 only — a Jellyfin 12 plugin
 has to follow. Building the shell needs the .NET 10 SDK; Phase 0 does not.
 
+The SDK is installed per-user at `~/.dotnet` (no sudo required, and it does not
+disturb the system install at `/usr/local/share/dotnet`). SDK 10 compiles both
+target frameworks, and the .NET 9 *runtime* is installed alongside it because
+running the net9 test assembly needs it.
+
 ```bash
+export DOTNET_ROOT="$HOME/.dotnet"
+export PATH="$HOME/.dotnet:$PATH"
+
+dotnet build
 dotnet test
 ```
+
+Do not re-sign the installed binaries. If `dotnet` exits 137 (SIGKILL) on macOS,
+ad-hoc signing the host makes it *look* fixed while leaving it inconsistent with
+the Microsoft-signed libraries the MSBuild worker processes load, which then die
+with "Child node exited prematurely". Reinstall into a clean directory instead.
 
 ## Licence
 
