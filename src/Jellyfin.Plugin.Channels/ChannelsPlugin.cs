@@ -1,10 +1,11 @@
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 
 namespace Jellyfin.Plugin.Channels;
 
-public class ChannelsPlugin : BasePlugin<PluginConfiguration>
+public class ChannelsPlugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     public ChannelsPlugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
@@ -22,4 +23,13 @@ public class ChannelsPlugin : BasePlugin<PluginConfiguration>
         "Builds 24/7 virtual channels from your own library. A channel runs on the "
         + "wall clock whether or not anyone is watching, so tuning in joins whatever "
         + "is airing rather than resuming where you left off.";
+
+    public IEnumerable<PluginPageInfo> GetPages() =>
+    [
+        new PluginPageInfo
+        {
+            Name = Name,
+            EmbeddedResourcePath = $"{GetType().Namespace}.configPage.html"
+        }
+    ];
 }

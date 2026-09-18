@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Channels</title>
+</head>
+<body>
+<div id="ChannelsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-controller="__plugin/channels.js">
+    <div data-role="content">
+        <div class="content-primary">
+
+            <div id="channelListView">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <h2 style="margin:0;">Channels</h2>
+                    <button is="emby-button" type="button" class="raised button-submit" id="addChannel">
+                        <span>New channel</span>
+                    </button>
+                </div>
+                <p class="fieldDescription">
+                    A channel runs on the wall clock whether or not anyone is watching. Tuning in joins
+                    whatever is airing rather than resuming where you left off.
+                </p>
+                <div id="channelList" style="margin-top:1.5em;"></div>
+            </div>
+
+            <div id="channelEditView" style="display:none;">
+                <h2 id="editorTitle">Channel</h2>
+
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="channelName" label="Name" />
+                </div>
+
+                <div class="selectContainer">
+                    <select is="emby-select" id="channelTimeZone" label="Time zone"></select>
+                    <div class="fieldDescription">
+                        Decides what &quot;6:00 AM&quot; means for this channel. Stored with the channel and
+                        never taken from the server, so a wrong server clock cannot quietly shift the schedule.
+                    </div>
+                </div>
+
+                <h3 style="margin-top:1.5em;">Dayparts</h3>
+                <p class="fieldDescription">
+                    Split the broadcast day if you want different content at different times. One daypart
+                    covering 00:00&ndash;24:00 is an ordinary channel. Gaps are allowed and mean off air.
+                </p>
+                <div id="daypartList"></div>
+                <button is="emby-button" type="button" class="raised" id="addDaypart" style="margin-top:1em;">
+                    <span>Add daypart</span>
+                </button>
+
+                <div id="coverageWarning" class="fieldDescription"
+                     style="margin-top:1em;color:#cc5500;display:none;"></div>
+
+                <div style="margin-top:2em;">
+                    <button is="emby-button" type="button" class="raised button-submit" id="saveChannel">
+                        <span>Save</span>
+                    </button>
+                    <button is="emby-button" type="button" class="raised" id="cancelEdit">
+                        <span>Cancel</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = '7a3f1c92-5d64-4b08-9f21-6c8e5b0a4d73';
+
+            // Mirrors ChannelOrdering / ContentBlockKind / ChannelDays on the server.
+            var ORDER_SEQUENTIAL = 0, ORDER_SHUFFLE = 1;
+            var KIND_LIBRARY = 0, KIND_SERIES = 1, KIND_COLLECTION = 2, KIND_FILTER = 3;
+            var DAYS_ALL = 127, DAYS_WEEKDAYS = 62, DAYS_WEEKEND = 65;
+
+            var config = null;
+            var editing = null;      // the channel being edited
+            var editingIndex = -1;   // -1 means it is new
+
+            function page() { return document.querySelector('#ChannelsConfigPage'); }
+            function $(id) { return page().querySelector('#' + id); }
+
+            // ---- helpers -------------------------------------------------
+
+            function hhmm(ticksOrTimeSpan) {
+                // The server serialises TimeSpan as "hh:mm:ss"; tolerate "1.00:00:00" for 24h.
+                var s = String(ticksOrTimeSpan || '00:00:00');
+                if (s.indexOf('.') === 0) { s = s.substring(1); }
+                var dayPart = s.indexOf('.') > 0 ? parseInt(s.split('.')[0], 10) : 0;
+                var time = s.indexOf('.') > 0 ? s.split('.')[1] : s;
+                var bits = time.split(':');
+                var h = parseInt(bits[0], 10) + (dayPart * 24);
+                return (h < 10 ? '0' + h : h) + ':' + bits[1];
+            }
+
+            function toTimeSpan(value) {
+                var bits = String(value || '00:00').split(':');
+                var h = parseInt(bits[0], 10) || 0;
+                var m = parseInt(bits[1], 10) || 0;
+                if (h >= 24) { return '1.00:00:00'; }   // midnight end-of-day
+                return (h < 10 ? '0' + h : h) + ':' + (m < 10 ? '0' + m : m) + ':00';
+            }
+
+            function minutesOf(value) {
+                var bits = String(value || '00:00').split(':');
+                return (parseInt(bits[0], 10) || 0) * 60 + (parseInt(bits[1], 10) || 0);
+            }
+
+            function daysLabel(days) {
+                if (days === DAYS_ALL) { return 'All days'; }
+                if (days === DAYS_WEEKDAYS) { return 'Weekdays'; }
+                if (days === DAYS_WEEKEND) { return 'Weekend'; }
+                return 'Some days';
+            }
+
+            function blockLabel(block) {
+                var kinds = ['Library', 'Series', 'Collection', 'Filter'];
+                var name = kinds[block.Kind] || 'Block';
+                if (block.Kind === KIND_FILTER) {
+                    var f = block.Filter || {};
+                    var parts = [];
+                    if (f.Genres && f.Genres.length) { parts.push('genre=' + f.Genres.join('/')); }
+                    if (f.Tags && f.Tags.length) { parts.push('tag=' + f.Tags.join('/')); }
+                    if (f.MinYear) { parts.push('from ' + f.MinYear); }
+                    if (f.MaxYear) { parts.push('to ' + f.MaxYear); }
+                    return name + ' — ' + (parts.length ? parts.join(', ') : 'everything');
+                }
+                var n = (block.ItemIds || []).length;
+                return name + ' — ' + n + ' selected';
+            }
+
+            // ---- channel list --------------------------------------------
+
+            function renderList() {
+                var html = '';
+                if (!config.Channels || !config.Channels.length) {
+                    html = '<p class="fieldDescription">No channels yet.</p>';
+                } else {
+                    config.Channels.forEach(function (c, i) {
+                        var programs = (c.Dayparts || []).length;
+                        html += '<div class="listItem" style="padding:.6em 0;border-bottom:1px solid #333;'
+                            + 'display:flex;align-items:center;justify-content:space-between;">'
+                            + '<div><div style="font-weight:600;">' + (c.Name || '(unnamed)') + '</div>'
+                            + '<div class="fieldDescription">' + programs + ' daypart(s) &middot; '
+                            + (c.TimeZoneId || 'Etc/UTC') + '</div></div>'
+                            + '<div><button is="emby-button" type="button" class="raised editChannel" '
+                            + 'data-index="' + i + '"><span>Edit</span></button> '
+                            + '<button is="emby-button" type="button" class="raised deleteChannel" '
+                            + 'data-index="' + i + '"><span>Delete</span></button></div>'
+                            + '</div>';
+                    });
+                }
+                $('channelList').innerHTML = html;
+
+                Array.prototype.forEach.call(page().querySelectorAll('.editChannel'), function (b) {
+                    b.addEventListener('click', function () { openEditor(parseInt(b.getAttribute('data-index'), 10)); });
+                });
+                Array.prototype.forEach.call(page().querySelectorAll('.deleteChannel'), function (b) {
+                    b.addEventListener('click', function () {
+                        config.Channels.splice(parseInt(b.getAttribute('data-index'), 10), 1);
+                        save(function () { renderList(); });
+                    });
+                });
+            }
+
+            // ---- editor ---------------------------------------------------
+
+            function newDaypart() {
+                return {
+                    Name: 'All day',
+                    StartLocal: '00:00:00',
+                    EndLocal: '1.00:00:00',
+                    Days: DAYS_ALL,
+                    Blocks: [],
+                    Ordering: ORDER_SHUFFLE,
+                    Seed: Math.floor(Math.random() * 100000)
+                };
+            }
+
+            function openEditor(index) {
+                editingIndex = index;
+                if (index < 0) {
+                    editing = {
+                        Id: '00000000-0000-0000-0000-000000000000',
+                        Name: '',
+                        TimeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Etc/UTC',
+                        AnchorUtc: new Date().toISOString(),
+                        Dayparts: [newDaypart()]
+                    };
+                } else {
+                    editing = JSON.parse(JSON.stringify(config.Channels[index]));
+                }
+
+                $('editorTitle').innerText = index < 0 ? 'New channel' : 'Edit channel';
+                $('channelName').value = editing.Name || '';
+                buildTimeZones(editing.TimeZoneId);
+                renderDayparts();
+
+                $('channelListView').style.display = 'none';
+                $('channelEditView').style.display = 'block';
+            }
+
+            function buildTimeZones(selected) {
+                // Intl gives the real IANA list where available; the server resolves
+                // the id itself, so anything valid there is acceptable here.
+                var zones = (typeof Intl.supportedValuesOf === 'function')
+                    ? Intl.supportedValuesOf('timeZone')
+                    : [selected, 'Etc/UTC'];
+                if (zones.indexOf(selected) < 0) { zones = [selected].concat(zones); }
+                $('channelTimeZone').innerHTML = zones.map(function (z) {
+                    return '<option value="' + z + '"' + (z === selected ? ' selected' : '') + '>' + z + '</option>';
+                }).join('');
+            }
+
+            function renderDayparts() {
+                var html = '';
+                (editing.Dayparts || []).forEach(function (d, i) {
+                    html += '<div style="border:1px solid #444;border-radius:4px;padding:1em;margin-bottom:1em;">'
+                        + '<div style="display:flex;gap:.5em;align-items:flex-end;flex-wrap:wrap;">'
+                        + '<div class="inputContainer" style="flex:2;min-width:10em;">'
+                        + '<input is="emby-input" type="text" class="dpName" data-i="' + i + '" label="Daypart"'
+                        + ' value="' + (d.Name || '') + '" /></div>'
+                        + '<div class="inputContainer" style="flex:1;min-width:7em;">'
+                        + '<input is="emby-input" type="time" class="dpStart" data-i="' + i + '" label="From"'
+                        + ' value="' + hhmm(d.StartLocal) + '" /></div>'
+                        + '<div class="inputContainer" style="flex:1;min-width:7em;">'
+                        + '<input is="emby-input" type="time" class="dpEnd" data-i="' + i + '" label="To"'
+                        + ' value="' + hhmm(d.EndLocal) + '" /></div>'
+                        + '<div class="selectContainer" style="flex:1;min-width:9em;">'
+                        + '<select is="emby-select" class="dpDays" data-i="' + i + '" label="Days">'
+                        + '<option value="' + DAYS_ALL + '"' + (d.Days === DAYS_ALL ? ' selected' : '') + '>All days</option>'
+                        + '<option value="' + DAYS_WEEKDAYS + '"' + (d.Days === DAYS_WEEKDAYS ? ' selected' : '') + '>Weekdays</option>'
+                        + '<option value="' + DAYS_WEEKEND + '"' + (d.Days === DAYS_WEEKEND ? ' selected' : '') + '>Weekend</option>'
+                        + '</select></div>'
+                        + '<button is="emby-button" type="button" class="raised removeDaypart" data-i="' + i + '">'
+                        + '<span>Remove</span></button>'
+                        + '</div>';
+
+                    html += '<div style="margin-top:.8em;"><strong>Content</strong>';
+                    if (!d.Blocks.length) {
+                        html += '<div class="fieldDescription">Nothing yet &mdash; this daypart will be off air.</div>';
+                    }
+                    d.Blocks.forEach(function (b, bi) {
+                        html += '<div style="display:flex;align-items:center;justify-content:space-between;'
+                            + 'padding:.3em 0;"><span>&bull; ' + blockLabel(b) + '</span>'
+                            + '<button is="emby-button" type="button" class="raised removeBlock" '
+                            + 'data-i="' + i + '" data-b="' + bi + '"><span>Remove</span></button></div>';
+                    });
+                    html += '<div style="margin-top:.5em;display:flex;gap:.5em;flex-wrap:wrap;">'
+                        + '<button is="emby-button" type="button" class="raised addBlock" data-i="' + i + '"'
+                        + ' data-kind="' + KIND_LIBRARY + '"><span>+ Library</span></button>'
+                        + '<button is="emby-button" type="button" class="raised addBlock" data-i="' + i + '"'
+                        + ' data-kind="' + KIND_SERIES + '"><span>+ Series</span></button>'
+                        + '<button is="emby-button" type="button" class="raised addBlock" data-i="' + i + '"'
+                        + ' data-kind="' + KIND_COLLECTION + '"><span>+ Collection</span></button>'
+                        + '<button is="emby-button" type="button" class="raised addBlock" data-i="' + i + '"'
+                        + ' data-kind="' + KIND_FILTER + '"><span>+ Filter</span></button>'
+                        + '</div></div>';
+
+                    html += '<div class="selectContainer" style="margin-top:.8em;max-width:14em;">'
+                        + '<select is="emby-select" class="dpOrder" data-i="' + i + '" label="Order">'
+                        + '<option value="' + ORDER_SEQUENTIAL + '"' + (d.Ordering === ORDER_SEQUENTIAL ? ' selected' : '') + '>In order</option>'
+                        + '<option value="' + ORDER_SHUFFLE + '"' + (d.Ordering === ORDER_SHUFFLE ? ' selected' : '') + '>Shuffle</option>'
+                        + '</select></div>';
+
+                    html += '</div>';
+                });
+                $('daypartList').innerHTML = html;
+                wireDaypartEvents();
+                updateCoverage();
+            }
+
+            function wireDaypartEvents() {
+                function bind(cls, evt, fn) {
+                    Array.prototype.forEach.call(page().querySelectorAll('.' + cls), function (el) {
+                        el.addEventListener(evt, function () { fn(el, parseInt(el.getAttribute('data-i'), 10)); });
+                    });
+                }
+                bind('dpName', 'change', function (el, i) { editing.Dayparts[i].Name = el.value; });
+                bind('dpStart', 'change', function (el, i) { editing.Dayparts[i].StartLocal = toTimeSpan(el.value); updateCoverage(); });
+                bind('dpEnd', 'change', function (el, i) { editing.Dayparts[i].EndLocal = toTimeSpan(el.value); updateCoverage(); });
+                bind('dpDays', 'change', function (el, i) { editing.Dayparts[i].Days = parseInt(el.value, 10); });
+                bind('dpOrder', 'change', function (el, i) { editing.Dayparts[i].Ordering = parseInt(el.value, 10); });
+                bind('removeDaypart', 'click', function (el, i) { editing.Dayparts.splice(i, 1); renderDayparts(); });
+
+                bind('addBlock', 'click', function (el, i) {
+                    var kind = parseInt(el.getAttribute('data-kind'), 10);
+                    pickBlock(kind, function (block) {
+                        if (block) { editing.Dayparts[i].Blocks.push(block); renderDayparts(); }
+                    });
+                });
+
+                Array.prototype.forEach.call(page().querySelectorAll('.removeBlock'), function (el) {
+                    el.addEventListener('click', function () {
+                        var i = parseInt(el.getAttribute('data-i'), 10);
+                        var b = parseInt(el.getAttribute('data-b'), 10);
+                        editing.Dayparts[i].Blocks.splice(b, 1);
+                        renderDayparts();
+                    });
+                });
+            }
+
+            /// Picks the ids for a block. Filter blocks take free text instead.
+            function pickBlock(kind, done) {
+                if (kind === KIND_FILTER) {
+                    var genres = prompt('Genres (comma separated, blank for any)') || '';
+                    var minYear = prompt('Released from year (blank for any)') || '';
+                    done({
+                        Kind: kind,
+                        ItemIds: [],
+                        Filter: {
+                            Genres: genres.split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+                            Tags: [],
+                            MinYear: minYear ? parseInt(minYear, 10) : null,
+                            MaxYear: null,
+                            IncludeMovies: true,
+                            IncludeEpisodes: true
+                        }
+                    });
+                    return;
+                }
+
+                var types = {};
+                types[KIND_LIBRARY] = 'CollectionFolder';
+                types[KIND_SERIES] = 'Series';
+                types[KIND_COLLECTION] = 'BoxSet';
+
+                ApiClient.getJSON(ApiClient.getUrl('Items', {
+                    IncludeItemTypes: types[kind],
+                    Recursive: true,
+                    SortBy: 'SortName',
+                    Limit: 500,
+                    userId: ApiClient.getCurrentUserId()
+                })).then(function (result) {
+                    var items = result.Items || [];
+                    if (!items.length) { Dashboard.alert('Nothing of that kind was found.'); return done(null); }
+                    var list = items.map(function (it, n) { return (n + 1) + '. ' + it.Name; }).join('\n');
+                    var choice = prompt('Choose by number (comma separated for several):\n\n' + list);
+                    if (!choice) { return done(null); }
+                    var ids = choice.split(',').map(function (s) {
+                        var n = parseInt(s.trim(), 10) - 1;
+                        return items[n] ? items[n].Id : null;
+                    }).filter(Boolean);
+                    done(ids.length ? { Kind: kind, ItemIds: ids, Filter: null } : null);
+                });
+            }
+
+            function updateCoverage() {
+                var covered = [];
+                (editing.Dayparts || []).forEach(function (d) {
+                    covered.push([minutesOf(hhmm(d.StartLocal)), minutesOf(hhmm(d.EndLocal))]);
+                });
+                covered.sort(function (a, b) { return a[0] - b[0]; });
+
+                var gaps = [], cursor = 0;
+                covered.forEach(function (r) {
+                    if (r[0] > cursor) { gaps.push([cursor, r[0]]); }
+                    cursor = Math.max(cursor, r[1]);
+                });
+                if (cursor < 1440) { gaps.push([cursor, 1440]); }
+
+                var el = $('coverageWarning');
+                if (!gaps.length) { el.style.display = 'none'; return; }
+                function fmt(m) {
+                    var h = Math.floor(m / 60) % 24, mm = m % 60;
+                    return (h < 10 ? '0' + h : h) + ':' + (mm < 10 ? '0' + mm : mm);
+                }
+                el.innerText = 'Not covered: ' + gaps.map(function (g) {
+                    return fmt(g[0]) + '–' + fmt(g[1]);
+                }).join(', ') + '. The channel is off air then.';
+                el.style.display = 'block';
+            }
+
+            // ---- persistence ----------------------------------------------
+
+            function save(then) {
+                ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                    Dashboard.processPluginConfigurationUpdateResult(result);
+                    if (then) { then(); }
+                });
+            }
+
+            function load(then) {
+                ApiClient.getPluginConfiguration(pluginId).then(function (c) {
+                    config = c;
+                    if (!config.Channels) { config.Channels = []; }
+                    if (then) { then(); }
+                });
+            }
+
+            // ---- page lifecycle -------------------------------------------
+
+            page().addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                load(function () {
+                    renderList();
+                    $('channelListView').style.display = 'block';
+                    $('channelEditView').style.display = 'none';
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            $('addChannel').addEventListener('click', function () { openEditor(-1); });
+
+            $('cancelEdit').addEventListener('click', function () {
+                $('channelEditView').style.display = 'none';
+                $('channelListView').style.display = 'block';
+            });
+
+            $('saveChannel').addEventListener('click', function () {
+                editing.Name = $('channelName').value;
+                editing.TimeZoneId = $('channelTimeZone').value;
+
+                if (!editing.Name) { Dashboard.alert('Give the channel a name.'); return; }
+
+                var bad = editing.Dayparts.filter(function (d) {
+                    return minutesOf(hhmm(d.EndLocal)) <= minutesOf(hhmm(d.StartLocal));
+                });
+                if (bad.length) {
+                    Dashboard.alert('A daypart must end after it starts. A block spanning midnight is '
+                        + 'two dayparts — 22:00–24:00 and 00:00–02:00.');
+                    return;
+                }
+
+                if (editingIndex < 0) { config.Channels.push(editing); }
+                else { config.Channels[editingIndex] = editing; }
+
+                save(function () {
+                    renderList();
+                    $('channelEditView').style.display = 'none';
+                    $('channelListView').style.display = 'block';
+                });
+            });
+
+            $('addDaypart').addEventListener('click', function () {
+                editing.Dayparts.push(newDaypart());
+                renderDayparts();
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

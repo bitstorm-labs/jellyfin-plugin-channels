@@ -1,20 +1,45 @@
 namespace Jellyfin.Plugin.Channels;
 
-/// <summary>How a channel orders the items it was built from.</summary>
+/// <summary>How a daypart orders the items its blocks resolved to.</summary>
 public enum ChannelOrdering
 {
-    /// <summary>Source order: season/episode for a series, then item order.</summary>
+    /// <summary>Grouped by series, then season and episode.</summary>
     Sequential = 0,
 
-    /// <summary>Shuffled once by <see cref="ChannelDefinition.Seed"/> and then stable.</summary>
+    /// <summary>Shuffled once by the daypart's seed, and stable thereafter.</summary>
     SeededShuffle = 1
 }
 
 /// <summary>
-/// A channel as the user defined it. This is configuration, not schedule: it
-/// says what the channel is made of, while the running order lives in a
-/// <see cref="ChannelSnapshot"/> built from it.
+/// A daypart as configured: when it airs and what feeds it. The running order
+/// built from it lives in a <see cref="ChannelSnapshot"/>, kept separate because
+/// configuration is what the user owns and a snapshot is derived state that gets
+/// rebuilt whenever the library moves underneath it.
 /// </summary>
+public sealed class DaypartDefinition
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Start time of day in the channel's timezone.</summary>
+    public TimeSpan StartLocal { get; set; } = TimeSpan.Zero;
+
+    /// <summary>End time of day, exclusive. Must be after the start.</summary>
+    public TimeSpan EndLocal { get; set; } = TimeSpan.FromDays(1);
+
+    public ChannelDays Days { get; set; } = ChannelDays.All;
+
+    public List<ContentBlock> Blocks { get; set; } = [];
+
+    public ChannelOrdering Ordering { get; set; } = ChannelOrdering.SeededShuffle;
+
+    /// <summary>
+    /// Fixes the shuffle. Persisted rather than derived so a rebuild after a
+    /// library change disturbs the order as little as possible.
+    /// </summary>
+    public ulong Seed { get; set; }
+}
+
+/// <summary>A channel as the user defined it.</summary>
 public sealed class ChannelDefinition
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -22,24 +47,23 @@ public sealed class ChannelDefinition
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Libraries, series or collections feeding the channel. A channel is a mix
-    /// of sources rather than one-per-series, because "all my sitcoms" is the
-    /// thing people actually want and one-per-series is a special case of it.
+    /// IANA zone deciding what "6:00 AM" means for this channel's dayparts.
+    /// Stored per channel and never read from the host: a server's own zone is
+    /// easy to get wrong, and a schedule quietly an hour out is worse than one
+    /// that refuses to guess.
     /// </summary>
-    public List<Guid> SourceIds { get; set; } = [];
-
-    public ChannelOrdering Ordering { get; set; } = ChannelOrdering.SeededShuffle;
+    public string TimeZoneId { get; set; } = "Etc/UTC";
 
     /// <summary>
-    /// Fixes the shuffle. Stored rather than derived so that rebuilding a
-    /// snapshot after a library change reshuffles as little as possible.
-    /// </summary>
-    public ulong Seed { get; set; }
-
-    /// <summary>
-    /// The instant the channel's first program began. Everything else is
-    /// computed from it, so it must not drift once a channel is in use: moving
-    /// the anchor moves every airing the channel has ever had.
+    /// When the channel's timelines began. Everything is computed from it, so it
+    /// must not drift once a channel is in use — moving it moves every airing
+    /// the channel has ever had.
     /// </summary>
     public DateTime AnchorUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// The broadcast day. A single daypart covering 00:00-24:00 is the ordinary
+    /// undayparted channel; gaps between dayparts are legal and mean off air.
+    /// </summary>
+    public List<DaypartDefinition> Dayparts { get; set; } = [];
 }

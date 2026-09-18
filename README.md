@@ -5,15 +5,26 @@ the wall clock whether or not anyone is watching, so tuning in joins whatever is
 airing — you miss what already went out, and leaving and coming back later puts
 you on the *then-current* program rather than resuming where you stopped.
 
-## Status: Phase 0
+## Status: Phase 1
 
-The scheduling core and its tests. No server endpoints, no configuration UI, and
-no client support yet.
+Channels can be defined in the Jellyfin dashboard and queried over HTTP. No
+client support yet — nothing plays them.
+
+### API
+
+| | |
+|---|---|
+| `GET /Channels` | every configured channel |
+| `GET /Channels/{id}/NowPlaying` | the airing item, the offset to start at, when it ends, and what follows |
+
+`NowPlaying` answers `204 No Content` when the channel is off air — a gap in the
+schedule is a normal state, not an error. `StartPositionSeconds` is a
+join-in-progress offset and **must not** be written back as playback progress.
 
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | Schedule resolver, dayparting, deterministic ordering, with tests | **done** |
-| 1 | Snapshot builder, library-change listener, REST API, config page | not started |
+| 1 | Snapshot builder, library-change listener, REST API, config page | **done** |
 | 2 | tvOS/iOS channel list and channel playback mode | not started |
 | 3 | Roku and Android | not started |
 
