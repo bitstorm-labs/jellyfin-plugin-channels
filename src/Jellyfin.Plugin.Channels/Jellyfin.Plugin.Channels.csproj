@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    net10.0 is not a preference: Jellyfin.Controller 12.1.0 ships net10.0 only,
+    so a plugin for a Jellyfin 12 server has to follow. Building this project
+    needs the .NET 10 SDK; Core and its tests deliberately do not.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Authors>Bitstorm Labs</Authors>
+    <Copyright>Copyright (c) 2026 Bitstorm Labs</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Jellyfin.Plugin.Channels.Core\Jellyfin.Plugin.Channels.Core.csproj" />
+  </ItemGroup>
+</Project>
