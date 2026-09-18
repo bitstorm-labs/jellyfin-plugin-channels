@@ -12,7 +12,7 @@ no client support yet.
 
 | Phase | Scope | State |
 |-------|-------|-------|
-| 0 | Schedule resolver + deterministic ordering, with tests | **done** |
+| 0 | Schedule resolver, dayparting, deterministic ordering, with tests | **done** |
 | 1 | Snapshot builder, library-change listener, REST API, config page | not started |
 | 2 | tvOS/iOS channel list and channel playback mode | not started |
 | 3 | Roku and Android | not started |
@@ -47,6 +47,43 @@ tests/…Core.Tests                    xunit
 `Core` deliberately references nothing from Jellyfin. The schedule is pure
 arithmetic, and isolating it means it builds on any SDK, tests in milliseconds,
 and cannot quietly acquire a server dependency.
+
+## Dayparting
+
+A channel can be one schedule all day, or split into dayparts — cartoons in the
+morning, drama at night, optionally only on certain days.
+
+Each daypart owns an independent running order on its own continuous timeline.
+That is what keeps it cheap: selecting a daypart chooses *which* timeline you
+are watching, and the per-daypart arithmetic is the same resolver, untouched. It
+is also consistent with the premise — a timeline advances whether or not anyone
+is tuned in, and a daypart is simply a channel visible for part of the day.
+
+- **Timezone is explicit per channel**, never inherited from the host. A server's
+  own zone is easy to get wrong, and a schedule that quietly shifts by an hour is
+  worse than one that refuses to guess.
+- **A program overrunning its daypart is cut off at the boundary**, the way a
+  broadcast schedule cuts away regardless of what is on. Letting it overrun makes
+  dayparts drift out of their slots; refusing to start anything that will not fit
+  leaves dead air.
+- **A program ending exactly on the boundary still hands over** to the incoming
+  daypart. Treating only the overrun case as a handover reports the wrong next
+  program whenever a runtime divides the daypart evenly — which is common.
+- **A gap between dayparts is off air**, reported honestly rather than as an error.
+- **Blocks spanning midnight are rejected**; express them as two dayparts
+  (22:00-24:00 and 00:00-02:00) so which day an airing belongs to is never
+  ambiguous at exactly the boundaries the schedule must get right.
+
+## Commercials and interstitials
+
+Already accommodated, and needing no change here: a program is only
+`(ItemId, RuntimeTicks)`, so the resolver has no idea whether an entry is an
+episode, a bumper or an ad — only how long it lasts. Inserting interstitials is
+a snapshot-builder concern.
+
+Breaks *between* programs work as-is. Breaks *inside* a program need
+`ProgramSlot` to carry an end offset as well as a start, so playback can stop
+part-way, cut away, and resume.
 
 ## The resolver
 
