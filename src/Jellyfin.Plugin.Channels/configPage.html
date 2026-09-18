@@ -82,23 +82,13 @@
 
             // ---- helpers -------------------------------------------------
 
-            function hhmm(ticksOrTimeSpan) {
-                // The server serialises TimeSpan as "hh:mm:ss"; tolerate "1.00:00:00" for 24h.
-                var s = String(ticksOrTimeSpan || '00:00:00');
-                if (s.indexOf('.') === 0) { s = s.substring(1); }
-                var dayPart = s.indexOf('.') > 0 ? parseInt(s.split('.')[0], 10) : 0;
-                var time = s.indexOf('.') > 0 ? s.split('.')[1] : s;
-                var bits = time.split(':');
-                var h = parseInt(bits[0], 10) + (dayPart * 24);
-                return (h < 10 ? '0' + h : h) + ':' + bits[1];
-            }
-
-            function toTimeSpan(value) {
-                var bits = String(value || '00:00').split(':');
-                var h = parseInt(bits[0], 10) || 0;
-                var m = parseInt(bits[1], 10) || 0;
-                if (h >= 24) { return '1.00:00:00'; }   // midnight end-of-day
-                return (h < 10 ? '0' + h : h) + ':' + (m < 10 ? '0' + m : m) + ':00';
+            // Times are minutes past local midnight on the wire; the input
+            // elements want HH:MM. 1440 means midnight at the end of the day.
+            function minutesToHhmm(mins) {
+                var m = Math.max(0, Math.min(1440, mins || 0));
+                var h = Math.floor(m / 60), mm = m % 60;
+                if (h >= 24) { h = 23; mm = 59; }
+                return (h < 10 ? '0' + h : h) + ':' + (mm < 10 ? '0' + mm : mm);
             }
 
             function minutesOf(value) {
@@ -168,8 +158,8 @@
             function newDaypart() {
                 return {
                     Name: 'All day',
-                    StartLocal: '00:00:00',
-                    EndLocal: '1.00:00:00',
+                    StartMinutes: 0,
+                    EndMinutes: 1440,
                     Days: DAYS_ALL,
                     Blocks: [],
                     Ordering: ORDER_SHUFFLE,
@@ -222,10 +212,10 @@
                         + ' value="' + (d.Name || '') + '" /></div>'
                         + '<div class="inputContainer" style="flex:1;min-width:7em;">'
                         + '<input is="emby-input" type="time" class="dpStart" data-i="' + i + '" label="From"'
-                        + ' value="' + hhmm(d.StartLocal) + '" /></div>'
+                        + ' value="' + minutesToHhmm(d.StartMinutes) + '" /></div>'
                         + '<div class="inputContainer" style="flex:1;min-width:7em;">'
                         + '<input is="emby-input" type="time" class="dpEnd" data-i="' + i + '" label="To"'
-                        + ' value="' + hhmm(d.EndLocal) + '" /></div>'
+                        + ' value="' + minutesToHhmm(d.EndMinutes) + '" /></div>'
                         + '<div class="selectContainer" style="flex:1;min-width:9em;">'
                         + '<select is="emby-select" class="dpDays" data-i="' + i + '" label="Days">'
                         + '<option value="' + DAYS_ALL + '"' + (d.Days === DAYS_ALL ? ' selected' : '') + '>All days</option>'
@@ -277,8 +267,8 @@
                     });
                 }
                 bind('dpName', 'change', function (el, i) { editing.Dayparts[i].Name = el.value; });
-                bind('dpStart', 'change', function (el, i) { editing.Dayparts[i].StartLocal = toTimeSpan(el.value); updateCoverage(); });
-                bind('dpEnd', 'change', function (el, i) { editing.Dayparts[i].EndLocal = toTimeSpan(el.value); updateCoverage(); });
+                bind('dpStart', 'change', function (el, i) { editing.Dayparts[i].StartMinutes = minutesOf(el.value); updateCoverage(); });
+                bind('dpEnd', 'change', function (el, i) { editing.Dayparts[i].EndMinutes = minutesOf(el.value); updateCoverage(); });
                 bind('dpDays', 'change', function (el, i) { editing.Dayparts[i].Days = parseInt(el.value, 10); });
                 bind('dpOrder', 'change', function (el, i) { editing.Dayparts[i].Ordering = parseInt(el.value, 10); });
                 bind('removeDaypart', 'click', function (el, i) { editing.Dayparts.splice(i, 1); renderDayparts(); });
@@ -348,7 +338,7 @@
             function updateCoverage() {
                 var covered = [];
                 (editing.Dayparts || []).forEach(function (d) {
-                    covered.push([minutesOf(hhmm(d.StartLocal)), minutesOf(hhmm(d.EndLocal))]);
+                    covered.push([minutesOf(minutesToHhmm(d.StartMinutes)), minutesOf(minutesToHhmm(d.EndMinutes))]);
                 });
                 covered.sort(function (a, b) { return a[0] - b[0]; });
 
@@ -414,7 +404,7 @@
                 if (!editing.Name) { Dashboard.alert('Give the channel a name.'); return; }
 
                 var bad = editing.Dayparts.filter(function (d) {
-                    return minutesOf(hhmm(d.EndLocal)) <= minutesOf(hhmm(d.StartLocal));
+                    return minutesOf(minutesToHhmm(d.EndMinutes)) <= minutesOf(minutesToHhmm(d.StartMinutes));
                 });
                 if (bad.length) {
                     Dashboard.alert('A daypart must end after it starts. A block spanning midnight is '

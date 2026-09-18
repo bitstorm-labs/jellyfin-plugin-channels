@@ -72,15 +72,15 @@ public sealed class BlockResolver
 
             case ContentBlockKind.Collection:
                 // A collection's members are *linked* children, not physical
-                // ones, so ordinary ancestry does not find them — hence
-                // LinkedChildAncestorIds rather than ParentId or AncestorIds.
+                // ones, so the ordinary item query does not find them: asking
+                // for them by ancestry returns an empty set with no error, which
+                // shows up only as a channel quietly missing its movies. Walk
+                // the collection itself and ask for linked children explicitly.
                 return block.ItemIds
-                    .SelectMany(id => _libraryManager.GetItemList(new InternalItemsQuery
-                    {
-                        LinkedChildAncestorIds = [id],
-                        IncludeItemTypes = playable,
-                        Recursive = true
-                    }))
+                    .Select(id => _libraryManager.GetItemById(id) as Folder)
+                    .Where(folder => folder is not null)
+                    .SelectMany(folder => folder!.GetRecursiveChildren(includeLinkedChildren: true))
+                    .Where(item => item is Video)
                     .ToArray();
 
             case ContentBlockKind.Filter:

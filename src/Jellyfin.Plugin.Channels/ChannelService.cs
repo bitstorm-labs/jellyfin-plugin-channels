@@ -82,7 +82,12 @@ public sealed class ChannelService
 
             try
             {
-                dayparts.Add(new Daypart(part.Name, part.StartLocal, part.EndLocal, snapshot, part.Days));
+                dayparts.Add(new Daypart(
+                    part.Name,
+                    TimeSpan.FromMinutes(part.StartMinutes),
+                    TimeSpan.FromMinutes(part.EndMinutes),
+                    snapshot,
+                    (ChannelDays)part.Days));
             }
             catch (ArgumentOutOfRangeException ex)
             {

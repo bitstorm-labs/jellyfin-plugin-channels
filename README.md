@@ -14,8 +14,8 @@ client support yet — nothing plays them.
 
 | | |
 |---|---|
-| `GET /Channels` | every configured channel |
-| `GET /Channels/{id}/NowPlaying` | the airing item, the offset to start at, when it ends, and what follows |
+| `GET /VirtualChannels` | every configured channel |
+| `GET /VirtualChannels/{id}/NowPlaying` | the airing item, the offset to start at, when it ends, and what follows |
 
 `NowPlaying` answers `204 No Content` when the channel is off air — a gap in the
 schedule is a normal state, not an error. `StartPositionSeconds` is a
@@ -58,6 +58,25 @@ tests/…Core.Tests                    xunit
 `Core` deliberately references nothing from Jellyfin. The schedule is pure
 arithmetic, and isolating it means it builds on any SDK, tests in milliseconds,
 and cannot quietly acquire a server dependency.
+
+## Two traps this had to be built around
+
+Both were found by deploying to a real server, not by reading docs:
+
+- **The route cannot be `/Channels`.** Jellyfin's own `ChannelsController` owns
+  it, and registering a second one does not shadow it — every request to it then
+  fails with `AmbiguousMatchException`. Hence `/VirtualChannels`.
+- **A collection's members are linked children, not physical ones.** Asking for
+  them through `InternalItemsQuery` returns an empty set *with no error*, which
+  surfaces only as a channel quietly missing its movies. Walk the collection with
+  `GetRecursiveChildren(includeLinkedChildren: true)` instead.
+
+Configuration is also deliberately made of primitives — minutes past midnight and
+a day bitmask rather than `TimeSpan` and a `[Flags]` enum. Plugin config
+round-trips through Jellyfin's JSON API and persists via `XmlSerializer`, and
+both are hostile to richer types: Jellyfin's `JsonFlagEnumConverter` implements
+`Write` but throws `NotImplementedException` on `Read`, so a flags enum cannot be
+posted back at all.
 
 ## Dayparting
 

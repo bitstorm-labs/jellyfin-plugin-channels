@@ -20,13 +20,26 @@ public sealed class DaypartDefinition
 {
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Start time of day in the channel's timezone.</summary>
-    public TimeSpan StartLocal { get; set; } = TimeSpan.Zero;
+    // The three fields below are primitives on purpose, and the reason is not
+    // taste. Plugin configuration round-trips through Jellyfin's JSON API and is
+    // persisted with XmlSerializer, and both are hostile to richer types:
+    // Jellyfin's JsonFlagEnumConverter implements Write but throws
+    // NotImplementedException on Read, so a [Flags] enum cannot be posted back
+    // at all, and XmlSerializer has no sensible mapping for TimeSpan. Minutes
+    // and a bitmask survive both. The domain types (TimeSpan, ChannelDays) are
+    // reconstructed when the runtime daypart is built.
 
-    /// <summary>End time of day, exclusive. Must be after the start.</summary>
-    public TimeSpan EndLocal { get; set; } = TimeSpan.FromDays(1);
+    /// <summary>Start time as minutes past local midnight (0-1440).</summary>
+    public int StartMinutes { get; set; }
 
-    public ChannelDays Days { get; set; } = ChannelDays.All;
+    /// <summary>End time as minutes past local midnight, exclusive (0-1440).</summary>
+    public int EndMinutes { get; set; } = 1440;
+
+    /// <summary>
+    /// Day bitmask matching <see cref="ChannelDays"/>: Sunday is 1, Monday 2,
+    /// and so on up to Saturday 64. 127 is every day.
+    /// </summary>
+    public int Days { get; set; } = (int)ChannelDays.All;
 
     public List<ContentBlock> Blocks { get; set; } = [];
 

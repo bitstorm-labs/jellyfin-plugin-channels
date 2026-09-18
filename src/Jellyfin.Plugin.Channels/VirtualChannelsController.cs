@@ -12,13 +12,16 @@ namespace Jellyfin.Plugin.Channels;
 /// </summary>
 [ApiController]
 [Authorize]
-[Route("Channels")]
+// NOT "Channels": Jellyfin's own ChannelsController already owns that route,
+// and registering a second one makes every request to it fail with
+// AmbiguousMatchException rather than quietly preferring either.
+[Route("VirtualChannels")]
 [Produces(MediaTypeNames.Application.Json)]
-public class ChannelsController : ControllerBase
+public class VirtualChannelsController : ControllerBase
 {
     private readonly ChannelService _channels;
 
-    public ChannelsController(ChannelService channels)
+    public VirtualChannelsController(ChannelService channels)
     {
         _channels = channels;
     }
