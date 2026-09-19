@@ -75,6 +75,64 @@ public class VirtualChannelsController : ControllerBase
             NextItemId = value.NextItemId == Guid.Empty ? null : value.NextItemId
         });
     }
+
+    /// <summary>
+    /// What every channel will air over the next <paramref name="hours"/> hours.
+    ///
+    /// One call for all channels rather than one per channel: a guide draws
+    /// every row at once, and a request per channel would make the grid appear
+    /// a row at a time.
+    /// </summary>
+    [HttpGet("Guide")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<IEnumerable<ChannelGuideDto>> GetGuide([FromQuery] double hours = 3)
+    {
+        // Clamped so a stray query cannot ask the server to walk a year of
+        // schedule for every channel at once.
+        var window = Math.Clamp(hours, 0.5, 24);
+        var from = DateTime.UtcNow;
+        var to = from.AddHours(window);
+
+        return Ok(_channels.GetChannels().Select(channel => new ChannelGuideDto
+        {
+            Id = channel.Id,
+            Name = channel.Name,
+            Description = channel.Description,
+            Programs = _channels.GetGuide(channel.Id, from, to).Select(slot => new GuideEntryDto
+            {
+                ItemId = slot.ItemId,
+                StartUtc = slot.StartUtc,
+                EndUtc = slot.EndUtc,
+                StartPositionSeconds = slot.OffsetSeconds
+            }).ToList()
+        }));
+    }
+}
+
+public class ChannelGuideDto
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+
+    public List<GuideEntryDto> Programs { get; set; } = [];
+}
+
+public class GuideEntryDto
+{
+    public Guid ItemId { get; set; }
+
+    public DateTime StartUtc { get; set; }
+
+    public DateTime EndUtc { get; set; }
+
+    /// <summary>
+    /// How far into the item this airing already is. Non-zero only for the
+    /// entry in progress when the guide was requested.
+    /// </summary>
+    public double StartPositionSeconds { get; set; }
 }
 
 public class ChannelSummary

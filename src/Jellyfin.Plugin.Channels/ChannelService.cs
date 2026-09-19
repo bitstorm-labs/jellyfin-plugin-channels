@@ -46,17 +46,24 @@ public sealed class ChannelService
             return null;
         }
 
-        var built = _cache.GetOrAdd(channelId, _ => Build(definition));
+        var built = Built(channelId, definition);
+        return ChannelScheduleResolver.Resolve(built.Dayparts, built.TimeZone, definition.AnchorUtc, nowUtc);
+    }
 
-        // A definition edited in the config page must not keep serving the old
-        // running order, and the config object carries no version of its own.
-        if (built.Generation != _generation)
+    /// <summary>
+    /// Everything <paramref name="channelId"/> will air in a window — the guide.
+    /// </summary>
+    public IReadOnlyList<ProgramSlot> GetGuide(Guid channelId, DateTime fromUtc, DateTime toUtc)
+    {
+        var definition = GetChannel(channelId);
+        if (definition is null)
         {
-            built = Build(definition);
-            _cache[channelId] = built;
+            return [];
         }
 
-        return ChannelScheduleResolver.Resolve(built.Dayparts, built.TimeZone, definition.AnchorUtc, nowUtc);
+        var built = Built(channelId, definition);
+        return ChannelScheduleResolver.ResolveRange(
+            built.Dayparts, built.TimeZone, definition.AnchorUtc, fromUtc, toUtc);
     }
 
     /// <summary>
@@ -68,6 +75,24 @@ public sealed class ChannelService
         Interlocked.Increment(ref _generation);
         _cache.Clear();
         _logger.LogDebug("Channel snapshots invalidated (generation {Generation})", _generation);
+    }
+
+    /// <summary>
+    /// The cached running order, rebuilt if the library moved under it. A
+    /// definition edited in the config page must not keep serving the old
+    /// order, and the config object carries no version of its own.
+    /// </summary>
+    private CachedChannel Built(Guid channelId, ChannelDefinition definition)
+    {
+        var built = _cache.GetOrAdd(channelId, _ => Build(definition));
+        if (built.Generation == _generation)
+        {
+            return built;
+        }
+
+        built = Build(definition);
+        _cache[channelId] = built;
+        return built;
     }
 
     private CachedChannel Build(ChannelDefinition definition)

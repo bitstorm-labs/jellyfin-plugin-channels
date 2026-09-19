@@ -74,6 +74,63 @@ public static class ChannelScheduleResolver
         };
     }
 
+    /// <summary>
+    /// Every programme airing between two instants — the guide.
+    ///
+    /// Built by walking the same single-instant resolver rather than by a
+    /// second scheduling implementation: a guide that could disagree with what
+    /// actually plays would be worse than no guide at all.
+    /// </summary>
+    /// <param name="maxPrograms">
+    /// A stop so a pathological schedule cannot spin. A three-hour window of
+    /// very short items is the realistic worst case, not thousands of entries.
+    /// </param>
+    public static IReadOnlyList<ProgramSlot> ResolveRange(
+        IReadOnlyList<Daypart> dayparts,
+        TimeZoneInfo timeZone,
+        DateTime anchorUtc,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int maxPrograms = 200)
+    {
+        ArgumentNullException.ThrowIfNull(dayparts);
+        ArgumentNullException.ThrowIfNull(timeZone);
+
+        var slots = new List<ProgramSlot>();
+        var cursor = fromUtc;
+
+        while (cursor < toUtc && slots.Count < maxPrograms)
+        {
+            var slot = Resolve(dayparts, timeZone, anchorUtc, cursor);
+            if (slot is null)
+            {
+                // Off air. Step forward rather than stopping, because a gap in
+                // the broadcast day is followed by more schedule, and a guide
+                // that gave up at the first gap would show nothing after it.
+                cursor = cursor.AddMinutes(1);
+                continue;
+            }
+
+            // Clamp the start to the cursor. A daypart runs its own continuous
+            // timeline, so the first programme after a daypart opens is joined
+            // in progress and reports a notional start from *before* the
+            // daypart existed. That is right for tuning in and wrong for a
+            // guide, where it draws a block reaching backwards over the one
+            // before it and makes time appear to run backwards.
+            var entry = slot.Value.StartUtc < cursor
+                ? slot.Value with { StartUtc = cursor }
+                : slot.Value;
+            slots.Add(entry);
+
+            // A programme that does not end after the cursor would walk the
+            // loop forever; nothing should produce that, which is exactly why
+            // it is worth refusing to trust.
+            cursor = entry.EndUtc > cursor ? entry.EndUtc : cursor.AddMinutes(1);
+        }
+
+        return slots;
+    }
+
     /// <summary>The UTC instant the given daypart stops airing today.</summary>
     private static DateTime DaypartEndUtc(Daypart daypart, DateTime localNow, TimeZoneInfo timeZone)
     {
