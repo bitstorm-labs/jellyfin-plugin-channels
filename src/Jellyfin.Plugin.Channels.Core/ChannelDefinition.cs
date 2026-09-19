@@ -60,6 +60,14 @@ public sealed class ChannelDefinition
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// What the channel is, in a line — "Comedy by day, sci-fi after dark".
+    /// Describes the channel's character, which is a different thing from the
+    /// synopsis of whatever happens to be airing, and stays true when the
+    /// programme changes.
+    /// </summary>
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
     /// IANA zone deciding what "6:00 AM" means for this channel's dayparts.
     /// Stored per channel and never read from the host: a server's own zone is
     /// easy to get wrong, and a schedule quietly an hour out is worse than one
