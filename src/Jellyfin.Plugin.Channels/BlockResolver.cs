@@ -116,12 +116,54 @@ public sealed class BlockResolver
             return [];
         }
 
+        // Episodes are resolved through their series, not directly.
+        //
+        // Genres live on the series; whether they are copied down to each
+        // episode depends entirely on the metadata provider, and in practice
+        // they usually are not. Querying episodes by genre therefore returns a
+        // near-empty set for most shows — a "Science Fiction" channel built
+        // that way found 8 episodes across a library holding 74 sci-fi series,
+        // and produced a channel that technically worked while being useless.
+        var results = new List<BaseItem>();
+        if (filter.IncludeEpisodes)
+        {
+            var seriesQuery = new InternalItemsQuery
+            {
+                IncludeItemTypes = [BaseItemKind.Series],
+                Recursive = true
+            };
+            ApplyFilter(seriesQuery, filter);
+
+            foreach (var series in _libraryManager.GetItemList(seriesQuery))
+            {
+                results.AddRange(_libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = series.Id,
+                    IncludeItemTypes = [BaseItemKind.Episode],
+                    Recursive = true
+                }));
+            }
+        }
+
+        if (!filter.IncludeMovies)
+        {
+            return results;
+        }
+
+        // Movies carry their own genres, so they are matched directly.
         var query = new InternalItemsQuery
         {
-            IncludeItemTypes = kinds.ToArray(),
+            IncludeItemTypes = [BaseItemKind.Movie],
             Recursive = true
         };
 
+        ApplyFilter(query, filter);
+        results.AddRange(_libraryManager.GetItemList(query));
+        return results;
+    }
+
+    private static void ApplyFilter(InternalItemsQuery query, ContentFilter filter)
+    {
         if (filter.Genres.Count > 0)
         {
             query.Genres = filter.Genres.ToArray();
@@ -141,7 +183,5 @@ public sealed class BlockResolver
         {
             query.MaxPremiereDate = new DateTime(max, 12, 31, 23, 59, 59, DateTimeKind.Utc);
         }
-
-        return _libraryManager.GetItemList(query);
     }
 }
