@@ -36,15 +36,19 @@ public class VirtualChannelsController : ControllerBase
     /// <summary>Every configured channel.</summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<IEnumerable<ChannelSummary>> GetChannels() =>
-        Ok(_channels.GetChannels().Select(c => new ChannelSummary
+    public ActionResult<IEnumerable<ChannelSummary>> GetChannels()
+    {
+        var numbers = _channels.Numbers();
+        return Ok(_channels.GetChannelsInNumberOrder().Select(c => new ChannelSummary
         {
             Id = c.Id,
+            Number = numbers[c.Id],
             Name = c.Name,
             Description = c.Description,
             TimeZoneId = c.TimeZoneId,
             DaypartCount = c.Dayparts.Count
         }));
+    }
 
     /// <summary>
     /// What the channel is airing right now, and where in it to start.
@@ -104,9 +108,11 @@ public class VirtualChannelsController : ControllerBase
         // reached by a channel of ten-minute videos inside three days.
         var maxPrograms = Math.Max(200, (int)(window * 40));
 
-        var guides = _channels.GetChannels().Select(channel => new ChannelGuideDto
+        var numbers = _channels.Numbers();
+        var guides = _channels.GetChannelsInNumberOrder().Select(channel => new ChannelGuideDto
         {
             Id = channel.Id,
+            Number = numbers[channel.Id],
             Name = channel.Name,
             Description = channel.Description,
             Programs = _channels.GetGuide(channel.Id, from, to, maxPrograms).Select(slot => new GuideEntryDto
@@ -158,6 +164,8 @@ public class VirtualChannelsController : ControllerBase
 public class ChannelGuideDto
 {
     public Guid Id { get; set; }
+
+    public int Number { get; set; }
 
     public string Name { get; set; } = string.Empty;
 
@@ -214,6 +222,8 @@ public class ChannelSummary
     public string TimeZoneId { get; set; } = string.Empty;
 
     public int DaypartCount { get; set; }
+
+    public int Number { get; set; }
 }
 
 public class NowPlayingDto

@@ -95,6 +95,12 @@ public sealed class ChannelDefinition
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
+    /// A fixed channel number chosen in the dashboard. Null lets the server
+    /// assign one — scattered and stable, see ChannelNumbering.
+    /// </summary>
+    public int? Number { get; set; }
+
+    /// <summary>
     /// IANA zone deciding what "6:00 AM" means for this channel's dayparts.
     /// Stored per channel and never read from the host: a server's own zone is
     /// easy to get wrong, and a schedule quietly an hour out is worse than one

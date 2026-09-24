@@ -31,6 +31,17 @@ public sealed class ChannelService
 
     public IReadOnlyList<ChannelDefinition> GetChannels() => Config.Channels;
 
+    /// <summary>Every channel's number, pinned or assigned.</summary>
+    public IReadOnlyDictionary<Guid, int> Numbers() =>
+        ChannelNumbering.Assign(Config.Channels.Select(c => (c.Id, c.Number)));
+
+    /// <summary>Channels in number order — the order a guide lists and channel up/down steps.</summary>
+    public IReadOnlyList<ChannelDefinition> GetChannelsInNumberOrder()
+    {
+        var numbers = Numbers();
+        return Config.Channels.OrderBy(c => numbers[c.Id]).ToList();
+    }
+
     public ChannelDefinition? GetChannel(Guid id) =>
         Config.Channels.FirstOrDefault(c => c.Id == id);
 

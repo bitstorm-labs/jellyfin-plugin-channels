@@ -31,6 +31,10 @@
                 </div>
 
                 <div class="inputContainer">
+                    <input is="emby-input" type="number" min="1" id="channelNumber" label="Channel number" />
+                    <div class="fieldDescription">Blank to let the server pick a fixed number between 2 and 99.</div>
+                </div>
+                <div class="inputContainer">
                     <input is="emby-input" type="text" id="channelDescription"
                            label="Description" />
                     <div class="fieldDescription">
@@ -218,6 +222,7 @@
                 $('editorTitle').innerText = index < 0 ? 'New channel' : 'Edit channel';
                 $('channelName').value = editing.Name || '';
                 $('channelDescription').value = editing.Description || '';
+                $('channelNumber').value = editing.Number == null ? '' : editing.Number;
                 buildTimeZones(editing.TimeZoneId);
                 renderDayparts();
 
@@ -476,6 +481,8 @@
             $('saveChannel').addEventListener('click', function () {
                 editing.Name = $('channelName').value;
                 editing.Description = $('channelDescription').value;
+                var number = parseInt($('channelNumber').value, 10);
+                editing.Number = isNaN(number) || number < 1 ? null : number;
                 editing.TimeZoneId = $('channelTimeZone').value;
 
                 if (!editing.Name) { Dashboard.alert('Give the channel a name.'); return; }
