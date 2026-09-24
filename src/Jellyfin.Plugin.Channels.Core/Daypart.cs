@@ -45,7 +45,8 @@ public sealed class Daypart
         TimeSpan endLocal,
         ChannelSnapshot snapshot,
         ChannelDays days = ChannelDays.All,
-        SeasonWindow? season = null)
+        SeasonWindow? season = null,
+        bool episodePerAiring = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -66,6 +67,7 @@ public sealed class Daypart
         Snapshot = snapshot;
         Days = days;
         Season = season;
+        EpisodePerAiring = episodePerAiring;
     }
 
     public string Name { get; }
@@ -84,6 +86,21 @@ public sealed class Daypart
     /// channel.
     /// </summary>
     public SeasonWindow? Season { get; }
+
+    /// <summary>
+    /// A regular slot rather than a continuous timeline: each time the daypart
+    /// comes round it starts one programme on the slot, the next in order,
+    /// and when that programme ends the channel's normal schedule resumes for
+    /// the rest of the slot. "Survivor, Wednesdays at 7."
+    ///
+    /// The episode is counted from the channel's anchor — how many times the
+    /// slot has aired since — so nothing is stored and every client agrees.
+    /// </summary>
+    public bool EpisodePerAiring { get; }
+
+    /// <summary>Whether the daypart airs on this local date at all.</summary>
+    public bool AirsOn(DateTime localDate) =>
+        Airs(localDate.DayOfWeek) && (Season is null || Season.Covers(localDate));
 
     public ChannelSnapshot Snapshot { get; }
 

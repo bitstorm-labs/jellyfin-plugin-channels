@@ -51,6 +51,13 @@ public sealed class DaypartDefinition
     /// <summary>Inclusive last day of the season, as MMDD.</summary>
     public int? SeasonEndMonthDay { get; set; }
 
+    /// <summary>
+    /// A regular slot: one programme per airing, in order, starting on the
+    /// slot — "Survivor, Wednesdays at 7". The rest of the slot falls back to
+    /// the channel's other dayparts. Always plays in series order.
+    /// </summary>
+    public bool EpisodePerAiring { get; set; }
+
     public List<ContentBlock> Blocks { get; set; } = [];
 
     public ChannelOrdering Ordering { get; set; } = ChannelOrdering.SeededShuffle;

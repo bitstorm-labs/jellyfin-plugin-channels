@@ -37,7 +37,29 @@ public static class ChannelScheduleResolver
 
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, timeZone);
 
-        var active = dayparts.FirstOrDefault(d => d.Covers(localNow));
+        // A regular slot wins while its episode is on. Once the episode ends
+        // the slot falls through, and the channel's continuous schedule fills
+        // the rest of the hour — the way a network fills after a short show.
+        foreach (var part in dayparts)
+        {
+            if (!part.EpisodePerAiring || !part.Covers(localNow))
+            {
+                continue;
+            }
+
+            if (AiringOn(part, localNow.Date, timeZone, anchorUtc) is { } airing
+                && nowUtc >= airing.StartUtc && nowUtc < airing.EndUtc)
+            {
+                return new ProgramSlot(
+                    airing.ItemId,
+                    nowUtc.Ticks - airing.StartUtc.Ticks,
+                    airing.StartUtc,
+                    airing.EndUtc,
+                    FirstItemAfter(dayparts, timeZone, anchorUtc, airing.EndUtc));
+            }
+        }
+
+        var active = dayparts.FirstOrDefault(d => !d.EpisodePerAiring && d.Covers(localNow));
         if (active is null)
         {
             return null;
@@ -53,11 +75,17 @@ public static class ChannelScheduleResolver
         // the way a broadcast schedule cuts away regardless of what is on. The
         // alternatives are worse: overrunning makes dayparts drift out of their
         // slots over time, and refusing to start anything that will not fit
-        // leaves dead air with nothing to fill it.
-        var daypartEndUtc = DaypartEndUtc(active, localNow, timeZone);
+        // leaves dead air with nothing to fill it. A regular slot starting
+        // before then is a boundary too: the show goes on at 7, not whenever
+        // the film before it happens to finish.
+        var boundary = DaypartEndUtc(active, localNow, timeZone);
+        if (NextAiringStart(dayparts, timeZone, anchorUtc, nowUtc) is { } slotStart && slotStart < boundary)
+        {
+            boundary = slotStart;
+        }
 
-        // Strictly inside the daypart: nothing to adjust.
-        if (slot.Value.EndUtc < daypartEndUtc)
+        // Strictly inside the boundary: nothing to adjust.
+        if (slot.Value.EndUtc < boundary)
         {
             return slot;
         }
@@ -69,10 +97,98 @@ public static class ChannelScheduleResolver
         // to divide the daypart evenly, which is far from rare.
         return slot.Value with
         {
-            EndUtc = slot.Value.EndUtc < daypartEndUtc ? slot.Value.EndUtc : daypartEndUtc,
-            NextItemId = FirstItemAfter(dayparts, timeZone, anchorUtc, daypartEndUtc)
+            EndUtc = boundary,
+            NextItemId = FirstItemAfter(dayparts, timeZone, anchorUtc, boundary)
         };
     }
+
+    private readonly record struct Airing(Guid ItemId, DateTime StartUtc, DateTime EndUtc);
+
+    /// <summary>
+    /// The episode a regular slot airs on a local date, or null if it does not
+    /// air that day. The Nth airing since the anchor plays the Nth programme,
+    /// looping; it starts on the slot and is cut at the slot's end if longer.
+    /// </summary>
+    private static Airing? AiringOn(Daypart part, DateTime localDate, TimeZoneInfo timeZone, DateTime anchorUtc)
+    {
+        var programs = part.Snapshot.Programs;
+        if (programs.Count == 0 || !part.AirsOn(localDate))
+        {
+            return null;
+        }
+
+        var anchorDate = TimeZoneInfo.ConvertTimeFromUtc(anchorUtc, timeZone).Date;
+        var index = AiringsBetween(part, anchorDate, localDate.Date);
+        var program = programs[(int)(index % programs.Count)];
+
+        var startUtc = ToUtc(localDate.Date + part.StartLocal, timeZone);
+        var slotEndUtc = ToUtc(localDate.Date + part.EndLocal, timeZone);
+        var runEndUtc = startUtc.AddTicks(program.RuntimeTicks);
+        return new Airing(program.ItemId, startUtc, runEndUtc < slotEndUtc ? runEndUtc : slotEndUtc);
+    }
+
+    /// <summary>How many times the slot airs on dates in [from, to).</summary>
+    private static long AiringsBetween(Daypart part, DateTime from, DateTime to)
+    {
+        if (to <= from)
+        {
+            return 0;
+        }
+
+        // Whole weeks by arithmetic, so the cost does not grow with the
+        // channel's age. A season breaks the weekly pattern; walk those.
+        if (part.Season is null)
+        {
+            var days = (int)(to - from).TotalDays;
+            var perWeek = Enumerable.Range(0, 7).Count(d => part.Airs((DayOfWeek)d));
+            long count = (long)(days / 7) * perWeek;
+            for (var d = from.AddDays(days / 7 * 7); d < to; d = d.AddDays(1))
+            {
+                if (part.Airs(d.DayOfWeek))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        long seasonal = 0;
+        for (var d = from; d < to; d = d.AddDays(1))
+        {
+            if (part.AirsOn(d))
+            {
+                seasonal++;
+            }
+        }
+
+        return seasonal;
+    }
+
+    /// <summary>The next regular-slot start strictly after an instant, if any in the next two days.</summary>
+    private static DateTime? NextAiringStart(
+        IReadOnlyList<Daypart> dayparts, TimeZoneInfo timeZone, DateTime anchorUtc, DateTime afterUtc)
+    {
+        var today = TimeZoneInfo.ConvertTimeFromUtc(afterUtc, timeZone).Date;
+        DateTime? earliest = null;
+        foreach (var part in dayparts.Where(d => d.EpisodePerAiring))
+        {
+            for (var day = 0; day <= 1; day++)
+            {
+                if (AiringOn(part, today.AddDays(day), timeZone, anchorUtc) is { } airing
+                    && airing.StartUtc > afterUtc
+                    && (earliest is null || airing.StartUtc < earliest))
+                {
+                    earliest = airing.StartUtc;
+                }
+            }
+        }
+
+        return earliest;
+    }
+
+    private static DateTime ToUtc(DateTime local, TimeZoneInfo timeZone) =>
+        TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), timeZone);
 
     /// <summary>
     /// Every programme airing between two instants — the guide.

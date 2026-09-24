@@ -103,7 +103,10 @@ public sealed class ChannelService
         foreach (var part in definition.Dayparts)
         {
             var items = _blocks.Resolve(part.Blocks);
-            var snapshot = SnapshotBuilder.Build(items, part.Ordering, part.Seed, _generation, now);
+            // A regular slot is "the next episode", which only means something
+            // in series order.
+            var ordering = part.EpisodePerAiring ? ChannelOrdering.Sequential : part.Ordering;
+            var snapshot = SnapshotBuilder.Build(items, ordering, part.Seed, _generation, now);
 
             try
             {
@@ -113,7 +116,8 @@ public sealed class ChannelService
                     TimeSpan.FromMinutes(part.EndMinutes),
                     snapshot,
                     (ChannelDays)part.Days,
-                    SeasonWindow.From(part.SeasonStartMonthDay, part.SeasonEndMonthDay)));
+                    SeasonWindow.From(part.SeasonStartMonthDay, part.SeasonEndMonthDay),
+                    part.EpisodePerAiring));
             }
             catch (ArgumentOutOfRangeException ex)
             {

@@ -189,6 +189,7 @@
                     EndMinutes: 1440,
                     Days: DAYS_ALL,
                     SeasonStartMonthDay: null,
+                    EpisodePerAiring: false,
                     SeasonEndMonthDay: null,
                     Blocks: [],
                     Ordering: ORDER_SHUFFLE,
@@ -253,6 +254,11 @@
                         + '<option value="' + DAYS_WEEKDAYS + '"' + (d.Days === DAYS_WEEKDAYS ? ' selected' : '') + '>Weekdays</option>'
                         + '<option value="' + DAYS_WEEKEND + '"' + (d.Days === DAYS_WEEKEND ? ' selected' : '') + '>Weekend</option>'
                         + '</select></div>'
+                        + '<div class="selectContainer" style="flex:1;min-width:11em;">'
+                        + '<select is="emby-select" class="dpAiring" data-i="' + i + '" label="Plays">'
+                        + '<option value="0"' + (d.EpisodePerAiring ? '' : ' selected') + '>Continuously</option>'
+                        + '<option value="1"' + (d.EpisodePerAiring ? ' selected' : '') + '>Next episode each airing</option>'
+                        + '</select></div>'
                         + '<div class="inputContainer" style="flex:1;min-width:8em;">'
                         + '<input is="emby-input" type="text" class="dpSeasonStart" data-i="' + i + '"'
                         + ' label="Season from" placeholder="MM-DD"'
@@ -309,6 +315,7 @@
                 bind('dpStart', 'change', function (el, i) { editing.Dayparts[i].StartMinutes = minutesOf(el.value); updateCoverage(); });
                 bind('dpEnd', 'change', function (el, i) { editing.Dayparts[i].EndMinutes = minutesOf(el.value); updateCoverage(); });
                 bind('dpDays', 'change', function (el, i) { editing.Dayparts[i].Days = parseInt(el.value, 10); });
+                bind('dpAiring', 'change', function (el, i) { editing.Dayparts[i].EpisodePerAiring = el.value === '1'; });
                 bind('dpSeasonStart', 'change', function (el, i) {
                     editing.Dayparts[i].SeasonStartMonthDay = textToMonthDay(el.value);
                     el.value = monthDayToText(editing.Dayparts[i].SeasonStartMonthDay);
