@@ -93,6 +93,23 @@
 
             // Times are minutes past local midnight on the wire; the input
             // elements want HH:MM. 1440 means midnight at the end of the day.
+            // A season boundary is stored as MMDD — 1031 is 31 October — and
+            // shown as MM-DD. It carries no year on purpose: the window recurs.
+            function monthDayToText(v) {
+                var n = parseInt(v, 10);
+                if (isNaN(n) || n <= 0) { return ''; }
+                var mo = Math.floor(n / 100), da = n % 100;
+                return (mo < 10 ? '0' + mo : mo) + '-' + (da < 10 ? '0' + da : da);
+            }
+
+            function textToMonthDay(text) {
+                var m = /^\s*(\d{1,2})\s*[-\/]\s*(\d{1,2})\s*$/.exec(text || '');
+                if (!m) { return null; }
+                var mo = parseInt(m[1], 10), da = parseInt(m[2], 10);
+                if (mo < 1 || mo > 12 || da < 1 || da > 31) { return null; }
+                return (mo * 100) + da;
+            }
+
             function minutesToHhmm(mins) {
                 var m = Math.max(0, Math.min(1440, mins || 0));
                 var h = Math.floor(m / 60), mm = m % 60;
@@ -119,6 +136,7 @@
                     var f = block.Filter || {};
                     var parts = [];
                     if (f.Genres && f.Genres.length) { parts.push('genre=' + f.Genres.join('/')); }
+                    if (f.ExcludeGenres && f.ExcludeGenres.length) { parts.push('not ' + f.ExcludeGenres.join('/')); }
                     if (f.Tags && f.Tags.length) { parts.push('tag=' + f.Tags.join('/')); }
                     if (f.MinYear) { parts.push('from ' + f.MinYear); }
                     if (f.MaxYear) { parts.push('to ' + f.MaxYear); }
@@ -170,6 +188,8 @@
                     StartMinutes: 0,
                     EndMinutes: 1440,
                     Days: DAYS_ALL,
+                    SeasonStartMonthDay: null,
+                    SeasonEndMonthDay: null,
                     Blocks: [],
                     Ordering: ORDER_SHUFFLE,
                     Seed: Math.floor(Math.random() * 100000)
@@ -233,6 +253,14 @@
                         + '<option value="' + DAYS_WEEKDAYS + '"' + (d.Days === DAYS_WEEKDAYS ? ' selected' : '') + '>Weekdays</option>'
                         + '<option value="' + DAYS_WEEKEND + '"' + (d.Days === DAYS_WEEKEND ? ' selected' : '') + '>Weekend</option>'
                         + '</select></div>'
+                        + '<div class="inputContainer" style="flex:1;min-width:8em;">'
+                        + '<input is="emby-input" type="text" class="dpSeasonStart" data-i="' + i + '"'
+                        + ' label="Season from" placeholder="MM-DD"'
+                        + ' value="' + monthDayToText(d.SeasonStartMonthDay) + '" /></div>'
+                        + '<div class="inputContainer" style="flex:1;min-width:8em;">'
+                        + '<input is="emby-input" type="text" class="dpSeasonEnd" data-i="' + i + '"'
+                        + ' label="Season to" placeholder="MM-DD"'
+                        + ' value="' + monthDayToText(d.SeasonEndMonthDay) + '" /></div>'
                         + '<button is="emby-button" type="button" class="raised removeDaypart" data-i="' + i + '">'
                         + '<span>Remove</span></button>'
                         + '</div>';
@@ -281,6 +309,14 @@
                 bind('dpStart', 'change', function (el, i) { editing.Dayparts[i].StartMinutes = minutesOf(el.value); updateCoverage(); });
                 bind('dpEnd', 'change', function (el, i) { editing.Dayparts[i].EndMinutes = minutesOf(el.value); updateCoverage(); });
                 bind('dpDays', 'change', function (el, i) { editing.Dayparts[i].Days = parseInt(el.value, 10); });
+                bind('dpSeasonStart', 'change', function (el, i) {
+                    editing.Dayparts[i].SeasonStartMonthDay = textToMonthDay(el.value);
+                    el.value = monthDayToText(editing.Dayparts[i].SeasonStartMonthDay);
+                });
+                bind('dpSeasonEnd', 'change', function (el, i) {
+                    editing.Dayparts[i].SeasonEndMonthDay = textToMonthDay(el.value);
+                    el.value = monthDayToText(editing.Dayparts[i].SeasonEndMonthDay);
+                });
                 bind('dpOrder', 'change', function (el, i) { editing.Dayparts[i].Ordering = parseInt(el.value, 10); });
                 bind('removeDaypart', 'click', function (el, i) { editing.Dayparts.splice(i, 1); renderDayparts(); });
 
@@ -305,12 +341,14 @@
             function pickBlock(kind, done) {
                 if (kind === KIND_FILTER) {
                     var genres = prompt('Genres (comma separated, blank for any)') || '';
+                    var exclude = prompt('Leave out genres (comma separated, blank for none)') || '';
                     var minYear = prompt('Released from year (blank for any)') || '';
                     done({
                         Kind: kind,
                         ItemIds: [],
                         Filter: {
                             Genres: genres.split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+                            ExcludeGenres: exclude.split(',').map(function (s) { return s.trim(); }).filter(Boolean),
                             Tags: [],
                             MinYear: minYear ? parseInt(minYear, 10) : null,
                             MaxYear: null,
@@ -421,6 +459,18 @@
                 if (bad.length) {
                     Dashboard.alert('A daypart must end after it starts. A block spanning midnight is '
                         + 'two dayparts — 22:00–24:00 and 00:00–02:00.');
+                    return;
+                }
+
+                // A half-set season is refused here rather than on the server,
+                // where it costs the daypart: the server drops one it cannot
+                // build, so the block would simply vanish from the schedule.
+                var halfSeason = editing.Dayparts.filter(function (d) {
+                    return (d.SeasonStartMonthDay === null) !== (d.SeasonEndMonthDay === null);
+                });
+                if (halfSeason.length) {
+                    Dashboard.alert('A season needs both a start and an end, or neither. '
+                        + 'Leave both blank to air all year.');
                     return;
                 }
 

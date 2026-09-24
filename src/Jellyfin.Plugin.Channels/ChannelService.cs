@@ -112,7 +112,8 @@ public sealed class ChannelService
                     TimeSpan.FromMinutes(part.StartMinutes),
                     TimeSpan.FromMinutes(part.EndMinutes),
                     snapshot,
-                    (ChannelDays)part.Days));
+                    (ChannelDays)part.Days,
+                    SeasonWindow.From(part.SeasonStartMonthDay, part.SeasonEndMonthDay)));
             }
             catch (ArgumentOutOfRangeException ex)
             {

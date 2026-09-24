@@ -24,6 +24,15 @@ public sealed class ContentFilter
 {
     public List<string> Genres { get; set; } = [];
 
+    /// <summary>
+    /// Genres that disqualify an item even when it matches everything else.
+    /// The intersection rule above cannot express "Reality but not Food" —
+    /// and that is exactly the case that comes up: two channels built from
+    /// overlapping genres each want a clean identity, and the only other way
+    /// to get one is to pin explicit series, which stops new arrivals joining.
+    /// </summary>
+    public List<string> ExcludeGenres { get; set; } = [];
+
     public List<string> Tags { get; set; } = [];
 
     public int? MinYear { get; set; }

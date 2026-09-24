@@ -1,12 +1,14 @@
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Channels;
 
 /// <summary>
-/// Rebuilds channels when the library moves underneath them.
+/// Rebuilds channels when anything the schedule is derived from changes —
+/// the library underneath them, or the definitions themselves.
 ///
 /// This is not housekeeping — it is correctness. A running order is a sequence
 /// of cumulative runtimes, so an item that has been deleted does not merely go
@@ -14,11 +16,11 @@ namespace Jellyfin.Plugin.Channels;
 /// tool removing watched media, a channel left unrebuilt drifts a little further
 /// out of step every day.
 /// </summary>
-public sealed class LibraryChangeListener : IHostedService
+public sealed class ScheduleInvalidationListener : IHostedService
 {
     private readonly ILibraryManager _libraryManager;
     private readonly ChannelService _channels;
-    private readonly ILogger<LibraryChangeListener> _logger;
+    private readonly ILogger<ScheduleInvalidationListener> _logger;
 
     private readonly object _gate = new();
     private Timer? _debounce;
@@ -30,10 +32,10 @@ public sealed class LibraryChangeListener : IHostedService
     /// </summary>
     private static readonly TimeSpan DebounceWindow = TimeSpan.FromSeconds(30);
 
-    public LibraryChangeListener(
+    public ScheduleInvalidationListener(
         ILibraryManager libraryManager,
         ChannelService channels,
-        ILogger<LibraryChangeListener> logger)
+        ILogger<ScheduleInvalidationListener> logger)
     {
         _libraryManager = libraryManager;
         _channels = channels;
@@ -45,6 +47,19 @@ public sealed class LibraryChangeListener : IHostedService
         _libraryManager.ItemAdded += OnLibraryChanged;
         _libraryManager.ItemRemoved += OnLibraryChanged;
         _libraryManager.ItemUpdated += OnLibraryChanged;
+
+        // A definition edited in the dashboard changes the schedule as surely as
+        // a deleted episode does, and the cache cannot notice on its own — the
+        // configuration object carries no version to compare against. Without
+        // this the edit is persisted correctly and then ignored until something
+        // unrelated happens to invalidate, so a new daypart, block or season is
+        // saved and simply does not take effect. That failure is particularly
+        // nasty because the dashboard reports success.
+        if (ChannelsPlugin.Instance is { } plugin)
+        {
+            plugin.ConfigurationChanged += OnConfigurationChanged;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -54,6 +69,11 @@ public sealed class LibraryChangeListener : IHostedService
         _libraryManager.ItemRemoved -= OnLibraryChanged;
         _libraryManager.ItemUpdated -= OnLibraryChanged;
 
+        if (ChannelsPlugin.Instance is { } plugin)
+        {
+            plugin.ConfigurationChanged -= OnConfigurationChanged;
+        }
+
         lock (_gate)
         {
             _debounce?.Dispose();
@@ -61,6 +81,24 @@ public sealed class LibraryChangeListener : IHostedService
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Rebuild at once rather than after the debounce the library uses. A config
+    /// edit is a single deliberate act, not the thousands of events a scan
+    /// emits, and whoever made it is looking at the result right now.
+    /// </summary>
+    private void OnConfigurationChanged(object? sender, BasePluginConfiguration e)
+    {
+        try
+        {
+            _channels.Invalidate();
+            _logger.LogInformation("Channel definitions changed; running orders will be rebuilt on next tune-in");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to invalidate channel snapshots after a configuration change");
+        }
     }
 
     private void OnLibraryChanged(object? sender, ItemChangeEventArgs e)

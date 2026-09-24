@@ -24,7 +24,7 @@ join-in-progress offset and **must not** be written back as playback progress.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | Schedule resolver, dayparting, deterministic ordering, with tests | **done** |
-| 1 | Snapshot builder, library-change listener, REST API, config page | **done** |
+| 1 | Snapshot builder, change listener, REST API, config page, seasons, exclusions | **done** |
 | 2 | tvOS/iOS channel list and channel playback mode | not started |
 | 3 | Roku and Android | not started |
 
@@ -103,6 +103,35 @@ is tuned in, and a daypart is simply a channel visible for part of the day.
 - **Blocks spanning midnight are rejected**; express them as two dayparts
   (22:00-24:00 and 00:00-02:00) so which day an airing belongs to is never
   ambiguous at exactly the boundaries the schedule must get right.
+- **A daypart can be seasonal.** `SeasonStartMonthDay` and `SeasonEndMonthDay`
+  are MMDD (1001 is 1 October), both inclusive, and carry no year because the
+  window recurs. An end before the start wraps the year end, so 1215-0105 is
+  Christmas rather than an error. Outside its window a daypart is simply not on
+  air — the same state as a gap — so one channel can carry a different theme per
+  season and needs no separate notion of a dormant channel. Both ends or
+  neither: a half-set window is rejected rather than silently meaning "always",
+  which is how a Christmas channel ends up airing in July with nothing in the
+  log to say why.
+
+## Filters
+
+A `Filter` block matches on genres, tags and release year, intersected. That
+cannot say "Reality but not Food", and that is exactly what comes up when two
+channels are built from overlapping genres and each wants a clean identity.
+`ExcludeGenres` disqualifies an item that carries any listed genre. For
+episodes the genre is read from the series, because that is where metadata
+providers put it — a "Science Fiction" channel filtering episodes directly found
+8 of them in a library holding 74 sci-fi series.
+
+## Running order stability
+
+The shuffle is decided per item — a hash of the daypart's seed and the item's
+id — never by position. Fisher-Yates would draw its swaps from the list's
+*length*, so one new download changes every draw after it and reshuffles the
+whole channel. On a server where a downloader adds episodes continuously that is
+the normal case, not the edge, and it defeats the reason the seed is persisted.
+Sorting by a per-item key inserts a new episode in its own place and leaves
+every other item where it was.
 
 ## Commercials and interstitials
 

@@ -14,6 +14,6 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         // instance would rebuild every running order on every tune-in.
         serviceCollection.AddSingleton<ChannelService>();
 
-        serviceCollection.AddHostedService<LibraryChangeListener>();
+        serviceCollection.AddHostedService<ScheduleInvalidationListener>();
     }
 }

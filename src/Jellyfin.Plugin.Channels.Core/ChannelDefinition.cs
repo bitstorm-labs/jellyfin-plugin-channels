@@ -41,6 +41,16 @@ public sealed class DaypartDefinition
     /// </summary>
     public int Days { get; set; } = (int)ChannelDays.All;
 
+    /// <summary>
+    /// Inclusive first day of the season this daypart airs in, as MMDD — 1001
+    /// is 1 October. Null, with <see cref="SeasonEndMonthDay"/>, means all year.
+    /// An end before the start wraps the year end, so 1215/0105 is Christmas.
+    /// </summary>
+    public int? SeasonStartMonthDay { get; set; }
+
+    /// <summary>Inclusive last day of the season, as MMDD.</summary>
+    public int? SeasonEndMonthDay { get; set; }
+
     public List<ContentBlock> Blocks { get; set; } = [];
 
     public ChannelOrdering Ordering { get; set; } = ChannelOrdering.SeededShuffle;

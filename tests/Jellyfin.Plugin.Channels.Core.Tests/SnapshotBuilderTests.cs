@@ -134,4 +134,29 @@ public class SnapshotBuilderTests
             .ToArray();
         Assert.Equal(new[] { "Alpha", "Mike", "Zulu" }, names);
     }
+
+    [Fact]
+    public void a_new_episode_slots_in_without_reordering_the_rest()
+    {
+        // The whole point of persisting the seed is that a library change
+        // "disturbs the order as little as possible". A positional shuffle
+        // cannot honour that: one new download changes the list length and
+        // every draw after it, so the entire channel reshuffles and whatever
+        // was airing next jumps somewhere else. New content arriving is the
+        // normal case here, not the exception.
+        var existing = Enumerable.Range(1, 40)
+            .Select(i => (IChannelItem)Episode("Syd and Macky", 1, i))
+            .ToList();
+
+        var before = SnapshotBuilder.Build(existing, ChannelOrdering.SeededShuffle, 7003, 1, Built)
+            .Programs.Select(p => p.ItemId).ToList();
+
+        var withNew = existing.Append(Episode("Syd and Macky", 1, 41)).ToList();
+        var after = SnapshotBuilder.Build(withNew, ChannelOrdering.SeededShuffle, 7003, 2, Built)
+            .Programs.Select(p => p.ItemId).ToList();
+
+        var newId = Episode("Syd and Macky", 1, 41).Id;
+        Assert.Contains(newId, after);
+        Assert.Equal(before, after.Where(id => id != newId).ToList());
+    }
 }

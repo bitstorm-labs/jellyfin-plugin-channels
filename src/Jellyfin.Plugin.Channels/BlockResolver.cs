@@ -136,6 +136,14 @@ public sealed class BlockResolver
 
             foreach (var series in _libraryManager.GetItemList(seriesQuery))
             {
+                // Exclusion is applied here, not in the query: the library
+                // query has no "not this genre", and the genre lives on the
+                // series, which is the thing being decided about.
+                if (IsExcluded(series, filter))
+                {
+                    continue;
+                }
+
                 results.AddRange(_libraryManager.GetItemList(new InternalItemsQuery
                 {
                     ParentId = series.Id,
@@ -158,9 +166,19 @@ public sealed class BlockResolver
         };
 
         ApplyFilter(query, filter);
-        results.AddRange(_libraryManager.GetItemList(query));
+        results.AddRange(_libraryManager.GetItemList(query).Where(movie => !IsExcluded(movie, filter)));
         return results;
     }
+
+    /// <summary>
+    /// True when the item carries any genre the filter rules out. Compared
+    /// case-insensitively because genre names arrive from several metadata
+    /// providers that do not agree on capitalisation.
+    /// </summary>
+    private static bool IsExcluded(BaseItem item, ContentFilter filter) =>
+        filter.ExcludeGenres.Count > 0
+        && item.Genres is { Length: > 0 } genres
+        && genres.Any(g => filter.ExcludeGenres.Contains(g, StringComparer.OrdinalIgnoreCase));
 
     private static void ApplyFilter(InternalItemsQuery query, ContentFilter filter)
     {

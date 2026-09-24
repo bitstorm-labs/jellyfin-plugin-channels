@@ -33,7 +33,7 @@ public static class SnapshotBuilder
         }
 
         var ordered = ordering == ChannelOrdering.SeededShuffle
-            ? DeterministicShuffle.Shuffle(unique, seed)
+            ? DeterministicShuffle.Shuffle(unique, seed, i => i.Id)
             : SortSequentially(unique);
 
         var programs = ordered.Select(i => new ChannelProgram(i.Id, i.RuntimeTicks)).ToArray();

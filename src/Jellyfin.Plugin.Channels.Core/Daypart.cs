@@ -44,7 +44,8 @@ public sealed class Daypart
         TimeSpan startLocal,
         TimeSpan endLocal,
         ChannelSnapshot snapshot,
-        ChannelDays days = ChannelDays.All)
+        ChannelDays days = ChannelDays.All,
+        SeasonWindow? season = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -64,6 +65,7 @@ public sealed class Daypart
         EndLocal = endLocal;
         Snapshot = snapshot;
         Days = days;
+        Season = season;
     }
 
     public string Name { get; }
@@ -74,11 +76,25 @@ public sealed class Daypart
 
     public ChannelDays Days { get; }
 
+    /// <summary>
+    /// The part of the year this daypart airs in, or <c>null</c> for all year.
+    /// Outside its window the daypart is simply not on air, which is the same
+    /// state as a gap in the broadcast day — so a channel whose every daypart is
+    /// out of season is off air, and needs no separate notion of a dormant
+    /// channel.
+    /// </summary>
+    public SeasonWindow? Season { get; }
+
     public ChannelSnapshot Snapshot { get; }
 
     /// <summary>Whether this daypart is on air at the given local instant.</summary>
     public bool Covers(DateTime localTime)
     {
+        if (Season is not null && !Season.Covers(localTime))
+        {
+            return false;
+        }
+
         if (!Airs(localTime.DayOfWeek))
         {
             return false;
