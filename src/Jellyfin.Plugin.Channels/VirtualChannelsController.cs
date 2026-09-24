@@ -1,4 +1,8 @@
 using System.Net.Mime;
+using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
+using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -21,10 +25,13 @@ public class VirtualChannelsController : ControllerBase
 {
     private readonly ChannelService _channels;
 
-    public VirtualChannelsController(ChannelService channels)
+    public VirtualChannelsController(ChannelService channels, ILibraryManager libraryManager)
     {
         _channels = channels;
+        _libraryManager = libraryManager;
     }
+
+    private readonly ILibraryManager _libraryManager;
 
     /// <summary>Every configured channel.</summary>
     [HttpGet]
@@ -87,25 +94,63 @@ public class VirtualChannelsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<IEnumerable<ChannelGuideDto>> GetGuide([FromQuery] double hours = 3)
     {
-        // Clamped so a stray query cannot ask the server to walk a year of
-        // schedule for every channel at once.
-        var window = Math.Clamp(hours, 0.5, 24);
+        // A week, the horizon a printed guide had. Clamped so a stray query
+        // cannot ask the server to walk a year of schedule for every channel.
+        var window = Math.Clamp(hours, 0.5, 168);
         var from = DateTime.UtcNow;
         var to = from.AddHours(window);
+        // The per-channel program cap scales with the window: 40 an hour is
+        // more than the shortest episodes can fill, and a fixed 200 was
+        // reached by a channel of ten-minute videos inside three days.
+        var maxPrograms = Math.Max(200, (int)(window * 40));
 
-        return Ok(_channels.GetChannels().Select(channel => new ChannelGuideDto
+        var guides = _channels.GetChannels().Select(channel => new ChannelGuideDto
         {
             Id = channel.Id,
             Name = channel.Name,
             Description = channel.Description,
-            Programs = _channels.GetGuide(channel.Id, from, to).Select(slot => new GuideEntryDto
+            Programs = _channels.GetGuide(channel.Id, from, to, maxPrograms).Select(slot => new GuideEntryDto
             {
                 ItemId = slot.ItemId,
                 StartUtc = slot.StartUtc,
                 EndUtc = slot.EndUtc,
                 StartPositionSeconds = slot.OffsetSeconds
             }).ToList()
-        }));
+        }).ToList();
+
+        // Names travel with the schedule. A day of guide is ~275 distinct
+        // items and a week is thousands; a client fetching each one by id —
+        // which is what the first tvOS guide did — cannot afford that, and a
+        // guide that shows ids while it catches up is not a guide.
+        var details = guides.SelectMany(g => g.Programs.Select(p => p.ItemId))
+            .Distinct()
+            .Select(id => (id, item: _libraryManager.GetItemById(id)))
+            .Where(x => x.item is not null)
+            .ToDictionary(x => x.id, x => x.item!);
+
+        foreach (var entry in guides.SelectMany(g => g.Programs))
+        {
+            if (!details.TryGetValue(entry.ItemId, out var item))
+            {
+                continue;
+            }
+
+            entry.Name = item.Name;
+            entry.Type = item.GetBaseItemKind().ToString();
+            entry.RuntimeTicks = item.RunTimeTicks;
+            if (item is Episode episode)
+            {
+                entry.SeriesName = episode.SeriesName;
+                entry.SeasonNumber = episode.ParentIndexNumber;
+                entry.EpisodeNumber = episode.IndexNumber;
+            }
+            else
+            {
+                entry.ProductionYear = item.ProductionYear;
+            }
+        }
+
+        return Ok(guides);
     }
 }
 
@@ -133,6 +178,25 @@ public class GuideEntryDto
     /// entry in progress when the guide was requested.
     /// </summary>
     public double StartPositionSeconds { get; set; }
+
+    // Everything below is filled from the library so a client can draw the
+    // guide without a request per item. Nullable, and absent for an item the
+    // library no longer has — the id is still there to fall back on.
+
+    public string? Name { get; set; }
+
+    /// <summary>"Episode" or "Movie".</summary>
+    public string? Type { get; set; }
+
+    public string? SeriesName { get; set; }
+
+    public int? SeasonNumber { get; set; }
+
+    public int? EpisodeNumber { get; set; }
+
+    public int? ProductionYear { get; set; }
+
+    public long? RuntimeTicks { get; set; }
 }
 
 public class ChannelSummary

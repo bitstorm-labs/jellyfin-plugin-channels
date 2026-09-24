@@ -53,7 +53,7 @@ public sealed class ChannelService
     /// <summary>
     /// Everything <paramref name="channelId"/> will air in a window — the guide.
     /// </summary>
-    public IReadOnlyList<ProgramSlot> GetGuide(Guid channelId, DateTime fromUtc, DateTime toUtc)
+    public IReadOnlyList<ProgramSlot> GetGuide(Guid channelId, DateTime fromUtc, DateTime toUtc, int maxPrograms = 200)
     {
         var definition = GetChannel(channelId);
         if (definition is null)
@@ -63,7 +63,7 @@ public sealed class ChannelService
 
         var built = Built(channelId, definition);
         return ChannelScheduleResolver.ResolveRange(
-            built.Dayparts, built.TimeZone, definition.AnchorUtc, fromUtc, toUtc);
+            built.Dayparts, built.TimeZone, definition.AnchorUtc, fromUtc, toUtc, maxPrograms);
     }
 
     /// <summary>
