@@ -77,6 +77,13 @@ public sealed class DaypartDefinition
     /// library change disturbs the order as little as possible.
     /// </summary>
     public ulong Seed { get; set; }
+
+    /// <summary>
+    /// A logo that replaces the channel's own while this daypart's season is
+    /// open — the snowflake a seasonal channel wears in December. Null keeps
+    /// the channel's logo.
+    /// </summary>
+    public string? Logo { get; set; }
 }
 
 /// <summary>A channel as the user defined it.</summary>
@@ -99,6 +106,12 @@ public sealed class ChannelDefinition
     /// assign one — scattered and stable, see ChannelNumbering.
     /// </summary>
     public int? Number { get; set; }
+
+    /// <summary>
+    /// Key of one of the logos the plugin ships ("nebula", "the-reel"). Null
+    /// is no logo; clients fall back to the number and name.
+    /// </summary>
+    public string? Logo { get; set; }
 
     /// <summary>
     /// IANA zone deciding what "6:00 AM" means for this channel's dayparts.

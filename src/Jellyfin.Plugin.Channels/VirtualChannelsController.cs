@@ -46,8 +46,58 @@ public class VirtualChannelsController : ControllerBase
             Name = c.Name,
             Description = c.Description,
             TimeZoneId = c.TimeZoneId,
-            DaypartCount = c.Dayparts.Count
+            DaypartCount = c.Dayparts.Count,
+            Logo = LogoFor(c)
         }));
+    }
+
+    /// <summary>
+    /// A channel's logo as a PNG — <c>style=mono</c> for the white version a
+    /// player lays over the picture. Anonymous like Jellyfin's own images, so
+    /// clients can hand the URL straight to an image view.
+    /// </summary>
+    /// <response code="404">No such channel, or it has no logo.</response>
+    [HttpGet("{channelId}/Logo")]
+    [AllowAnonymous]
+    [Produces("image/png")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult GetLogo([FromRoute] Guid channelId, [FromQuery] string? style = null)
+    {
+        var channel = _channels.GetChannel(channelId);
+        var key = channel is null ? null : LogoFor(channel);
+        var stream = key is null ? null : ChannelLogos.Open(key, string.Equals(style, "mono", StringComparison.OrdinalIgnoreCase));
+        if (stream is null)
+        {
+            return NotFound();
+        }
+
+        // The URL clients build carries the key, so a day's cache is safe:
+        // a seasonal swap changes the key and therefore the URL.
+        Response.Headers.CacheControl = "public, max-age=86400";
+        return File(stream, "image/png");
+    }
+
+    /// <summary>Every logo the plugin ships, for the dashboard's picker.</summary>
+    [HttpGet("Logos")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<IEnumerable<string>> GetLogoKeys() => Ok(ChannelLogos.Keys);
+
+    private static string? LogoFor(ChannelDefinition channel)
+    {
+        TimeZoneInfo zone;
+        try
+        {
+            zone = TimeZoneInfo.FindSystemTimeZoneById(channel.TimeZoneId);
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            // The schedule logs a bad zone when it builds; the logo only needs a date.
+            zone = TimeZoneInfo.Utc;
+        }
+
+        var key = ChannelLogo.Resolve(channel, TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone));
+        return key is not null && ChannelLogos.Keys.Contains(key) ? key : null;
     }
 
     /// <summary>
@@ -115,6 +165,7 @@ public class VirtualChannelsController : ControllerBase
             Number = numbers[channel.Id],
             Name = channel.Name,
             Description = channel.Description,
+            Logo = LogoFor(channel),
             Programs = _channels.GetGuide(channel.Id, from, to, maxPrograms).Select(slot => new GuideEntryDto
             {
                 ItemId = slot.ItemId,
@@ -171,6 +222,9 @@ public class ChannelGuideDto
 
     public string Description { get; set; } = string.Empty;
 
+    /// <summary>The logo key in effect today; fetch it from /VirtualChannels/{Id}/Logo.</summary>
+    public string? Logo { get; set; }
+
     public List<GuideEntryDto> Programs { get; set; } = [];
 }
 
@@ -224,6 +278,9 @@ public class ChannelSummary
     public int DaypartCount { get; set; }
 
     public int Number { get; set; }
+
+    /// <summary>The logo key in effect today; fetch it from /VirtualChannels/{Id}/Logo.</summary>
+    public string? Logo { get; set; }
 }
 
 public class NowPlayingDto

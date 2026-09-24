@@ -8,8 +8,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyVersion>0.7.0.0</AssemblyVersion>
-    <FileVersion>0.7.0.0</FileVersion>
+    <AssemblyVersion>0.8.0.0</AssemblyVersion>
+    <FileVersion>0.8.0.0</FileVersion>
     <Authors>Bitstorm Labs</Authors>
     <Copyright>Copyright (c) 2026 Bitstorm Labs</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -19,6 +19,8 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="configPage.html" />
+    <!-- PNGs only: the SVGs beside them are the editable source. -->
+    <EmbeddedResource Include="Logos\*.png" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Jellyfin.Plugin.Channels.Core\Jellyfin.Plugin.Channels.Core.csproj" />

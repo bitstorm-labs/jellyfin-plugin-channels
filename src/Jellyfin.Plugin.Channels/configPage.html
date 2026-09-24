@@ -34,6 +34,10 @@
                     <input is="emby-input" type="number" min="1" id="channelNumber" label="Channel number" />
                     <div class="fieldDescription">Blank to let the server pick a fixed number between 2 and 99.</div>
                 </div>
+                <div class="selectContainer">
+                    <select is="emby-select" id="channelLogo" label="Logo"></select>
+                    <div class="fieldDescription">Shown on cards, in the guide, and faintly over the picture while the channel plays.</div>
+                </div>
                 <div class="inputContainer">
                     <input is="emby-input" type="text" id="channelDescription"
                            label="Description" />
@@ -223,6 +227,7 @@
                 $('channelName').value = editing.Name || '';
                 $('channelDescription').value = editing.Description || '';
                 $('channelNumber').value = editing.Number == null ? '' : editing.Number;
+                $('channelLogo').innerHTML = logoOptions(editing.Logo || '', 'None');
                 buildTimeZones(editing.TimeZoneId);
                 renderDayparts();
 
@@ -281,6 +286,9 @@
                         + '<input is="emby-input" type="text" class="dpSeasonEnd" data-i="' + i + '"'
                         + ' label="Season to" placeholder="MM-DD"'
                         + ' value="' + monthDayToText(d.SeasonEndMonthDay) + '" /></div>'
+                        + '<div class="selectContainer" style="flex:1;min-width:10em;">'
+                        + '<select is="emby-select" class="dpLogo" data-i="' + i + '" label="Logo in season">'
+                        + logoOptions(d.Logo || '', "Channel's logo") + '</select></div>'
                         + '<button is="emby-button" type="button" class="raised removeDaypart" data-i="' + i + '">'
                         + '<span>Remove</span></button>'
                         + '</div>';
@@ -347,6 +355,7 @@
                     editing.Dayparts[i].SeasonEndMonthDay = textToMonthDay(el.value);
                     el.value = monthDayToText(editing.Dayparts[i].SeasonEndMonthDay);
                 });
+                bind('dpLogo', 'change', function (el, i) { editing.Dayparts[i].Logo = el.value || null; });
                 bind('dpOrder', 'change', function (el, i) { editing.Dayparts[i].Ordering = parseInt(el.value, 10); });
                 bind('removeDaypart', 'click', function (el, i) { editing.Dayparts.splice(i, 1); renderDayparts(); });
 
@@ -451,10 +460,26 @@
                 });
             }
 
+            var logoKeys = [];
+
+            function logoOptions(selected, noneLabel) {
+                var html = '<option value=""' + (selected ? '' : ' selected') + '>' + noneLabel + '</option>';
+                logoKeys.forEach(function (k) {
+                    html += '<option value="' + k + '"' + (k === selected ? ' selected' : '') + '>'
+                        + k.replace(/-/g, ' ') + '</option>';
+                });
+                return html;
+            }
+
             function load(then) {
                 ApiClient.getPluginConfiguration(pluginId).then(function (c) {
                     config = c;
                     if (!config.Channels) { config.Channels = []; }
+                    // The logo list is a nicety: without it the pickers only
+                    // offer "none", and the page still works.
+                    return ApiClient.getJSON(ApiClient.getUrl('VirtualChannels/Logos'))
+                        .then(function (keys) { logoKeys = keys || []; }, function () { logoKeys = []; });
+                }).then(function () {
                     if (then) { then(); }
                 });
             }
@@ -483,6 +508,7 @@
                 editing.Description = $('channelDescription').value;
                 var number = parseInt($('channelNumber').value, 10);
                 editing.Number = isNaN(number) || number < 1 ? null : number;
+                editing.Logo = $('channelLogo').value || null;
                 editing.TimeZoneId = $('channelTimeZone').value;
 
                 if (!editing.Name) { Dashboard.alert('Give the channel a name.'); return; }

@@ -117,6 +117,19 @@ is tuned in, and a daypart is simply a channel visible for part of the day.
   which is how a Christmas channel ends up airing in July with nothing in the
   log to say why.
 
+## Logos
+
+A channel can wear one of the logos the plugin ships (`GET /VirtualChannels/Logos`
+lists them): `GET /VirtualChannels/{id}/Logo` returns the PNG, `?style=mono` the
+white version a player lays over the picture. The endpoint is anonymous, like
+Jellyfin's own images, so a client can hand the URL straight to an image view.
+The channel list and the guide carry the key in effect today as `Logo`; clients
+put it in the URL, which makes a day of caching safe.
+
+A seasonal daypart may carry its own `Logo`, which replaces the channel's for
+the whole of its season — by date, not time of day, so a December snowflake
+shows at breakfast too. The SVG sources sit beside the PNGs in `Logos/`.
+
 ## Filters
 
 A `Filter` block matches on genres, tags and release year, intersected. That
