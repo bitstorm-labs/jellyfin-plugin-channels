@@ -1,4 +1,5 @@
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Plugins;
 using Microsoft.Extensions.Hosting;
@@ -103,10 +104,15 @@ public sealed class ScheduleInvalidationListener : IHostedService
 
     private void OnLibraryChanged(object? sender, ItemChangeEventArgs e)
     {
-        // Only things a channel can actually air are worth a rebuild; a changed
-        // artist or box-set cover cannot move anyone's schedule. Episodes and
-        // movies are both Video, which is exactly what the block resolver queries.
-        if (e.Item is not Video)
+        // Only things that can move a schedule are worth a rebuild: a changed
+        // artist cannot. Episodes and movies are both Video, which is what the
+        // block resolver queries — and a collection, because a Collection block
+        // is exactly its membership. Adding a film to one updates the BoxSet,
+        // not any Video, and with the old Video-only test the channel kept its
+        // cached order until something unrelated happened to invalidate it.
+        // Seen live: eight films added to a collection, none on air until a
+        // config re-save forced the rebuild.
+        if (e.Item is not (Video or BoxSet))
         {
             return;
         }

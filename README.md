@@ -103,6 +103,10 @@ is tuned in, and a daypart is simply a channel visible for part of the day.
 - **Blocks spanning midnight are rejected**; express them as two dayparts
   (22:00-24:00 and 00:00-02:00) so which day an airing belongs to is never
   ambiguous at exactly the boundaries the schedule must get right.
+- **A Collection block is its membership, live.** Adding a film to the
+  collection rebuilds the channel like any library change — the change
+  listener treats a `BoxSet` update as it treats a `Video`, because that is
+  the one folder whose contents a channel airs.
 - **A daypart can be seasonal.** `SeasonStartMonthDay` and `SeasonEndMonthDay`
   are MMDD (1001 is 1 October), both inclusive, and carry no year because the
   window recurs. An end before the start wraps the year end, so 1215-0105 is
