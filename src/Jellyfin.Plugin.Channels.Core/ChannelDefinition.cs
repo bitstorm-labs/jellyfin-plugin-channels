@@ -58,6 +58,16 @@ public sealed class DaypartDefinition
     /// </summary>
     public bool EpisodePerAiring { get; set; }
 
+    /// <summary>
+    /// First local date a regular slot airs, as yyyy-MM-dd; its first episode
+    /// airs then. A string for the same serialisation reasons as the MMDD
+    /// fields. Empty means "count from the channel's anchor".
+    /// </summary>
+    public string? FirstAiringDate { get; set; }
+
+    /// <summary>Programmes per airing of a regular slot: 1 a weekly show, more a marathon, 0 fill the slot.</summary>
+    public int EpisodesPerAiring { get; set; } = 1;
+
     public List<ContentBlock> Blocks { get; set; } = [];
 
     public ChannelOrdering Ordering { get; set; } = ChannelOrdering.SeededShuffle;

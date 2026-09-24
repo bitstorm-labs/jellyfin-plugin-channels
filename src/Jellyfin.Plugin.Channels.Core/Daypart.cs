@@ -46,8 +46,15 @@ public sealed class Daypart
         ChannelSnapshot snapshot,
         ChannelDays days = ChannelDays.All,
         SeasonWindow? season = null,
-        bool episodePerAiring = false)
+        bool episodePerAiring = false,
+        DateTime? firstAiring = null,
+        int episodesPerAiring = 1)
     {
+        if (episodesPerAiring < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(episodesPerAiring), episodesPerAiring, "Zero fills the slot; negative means nothing.");
+        }
+
         ArgumentNullException.ThrowIfNull(snapshot);
 
         if (startLocal < TimeSpan.Zero || startLocal >= TimeSpan.FromDays(1))
@@ -68,6 +75,8 @@ public sealed class Daypart
         Days = days;
         Season = season;
         EpisodePerAiring = episodePerAiring;
+        FirstAiring = firstAiring?.Date;
+        EpisodesPerAiring = episodesPerAiring;
     }
 
     public string Name { get; }
@@ -98,9 +107,24 @@ public sealed class Daypart
     /// </summary>
     public bool EpisodePerAiring { get; }
 
+    /// <summary>
+    /// The local date a regular slot first airs. Airings are counted from here
+    /// rather than the channel's anchor, so a slot added mid-run opens on its
+    /// first episode; before it the slot does not exist.
+    /// </summary>
+    public DateTime? FirstAiring { get; }
+
+    /// <summary>
+    /// How many consecutive programmes a regular slot airs: 1 for a weekly show,
+    /// more for a marathon, 0 to fill the slot to its end.
+    /// </summary>
+    public int EpisodesPerAiring { get; }
+
     /// <summary>Whether the daypart airs on this local date at all.</summary>
     public bool AirsOn(DateTime localDate) =>
-        Airs(localDate.DayOfWeek) && (Season is null || Season.Covers(localDate));
+        Airs(localDate.DayOfWeek)
+        && (Season is null || Season.Covers(localDate))
+        && (FirstAiring is null || localDate.Date >= FirstAiring.Value);
 
     public ChannelSnapshot Snapshot { get; }
 

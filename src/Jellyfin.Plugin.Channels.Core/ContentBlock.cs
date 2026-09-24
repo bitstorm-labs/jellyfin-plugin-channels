@@ -35,6 +35,13 @@ public sealed class ContentFilter
 
     public List<string> Tags { get; set; } = [];
 
+    /// <summary>
+    /// Only items added to the library within this many days — "new this
+    /// week". Judged per episode, not per series: a show added years ago with
+    /// an episode that arrived yesterday has a premiere.
+    /// </summary>
+    public int? AddedWithinDays { get; set; }
+
     public int? MinYear { get; set; }
 
     public int? MaxYear { get; set; }

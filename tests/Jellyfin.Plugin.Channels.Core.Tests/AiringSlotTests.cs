@@ -107,4 +107,76 @@ public class AiringSlotTests
 
         Assert.Equal(Local(9, 16, 20), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 19, 30))!.Value.EndUtc);
     }
+
+    // ---------- Starts on ----------
+
+    private static List<Daypart> StartingOn(DateTime firstLocalDate) =>
+    [
+        new Daypart("Survivor", TimeSpan.FromHours(19), TimeSpan.FromHours(20),
+            Snapshot((Ep(1), 43), (Ep(2), 43), (Ep(3), 43)),
+            ChannelDays.Wednesday, season: null, episodePerAiring: true, firstAiring: firstLocalDate),
+        new Daypart("All day", TimeSpan.Zero, TimeSpan.FromHours(24), Snapshot((Filler, 30)))
+    ];
+
+    [Fact]
+    public void a_slot_with_a_start_date_airs_the_first_episode_on_that_date()
+    {
+        // Without a start date the anchor decides, and a slot created mid-run
+        // opens partway into the series.
+        var parts = StartingOn(new DateTime(2026, 9, 30));
+
+        Assert.Equal(Ep(1), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 30, 19, 5))!.Value.ItemId);
+        Assert.Equal(Ep(2), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(10, 7, 19, 5))!.Value.ItemId);
+    }
+
+    [Fact]
+    public void before_its_start_date_the_slot_does_not_exist()
+    {
+        var parts = StartingOn(new DateTime(2026, 9, 30));
+
+        Assert.Equal(Filler, ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 23, 19, 5))!.Value.ItemId);
+    }
+
+    // ---------- Marathons ----------
+
+    private static List<Daypart> Marathon(int episodesPerAiring) =>
+    [
+        new Daypart("The 100", TimeSpan.FromHours(13), TimeSpan.FromHours(18),
+            Snapshot(Enumerable.Range(1, 20).Select(n => (Ep(n), 43.0)).ToArray()),
+            ChannelDays.Wednesday, season: null, episodePerAiring: true, episodesPerAiring: episodesPerAiring),
+        new Daypart("All day", TimeSpan.Zero, TimeSpan.FromHours(24), Snapshot((Filler, 30)))
+    ];
+
+    [Fact]
+    public void a_marathon_airs_its_episodes_back_to_back()
+    {
+        var parts = Marathon(3);
+
+        Assert.Equal(Ep(1), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 13, 10))!.Value.ItemId);
+        Assert.Equal(Ep(2), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 13, 50))!.Value.ItemId);
+        var third = ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 14, 30))!.Value;
+        Assert.Equal(Ep(3), third.ItemId);
+        Assert.Equal(Local(9, 16, 14, 26), third.StartUtc);
+        // After the third episode the channel's normal schedule resumes.
+        Assert.Equal(Filler, ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 15, 30))!.Value.ItemId);
+    }
+
+    [Fact]
+    public void next_weeks_marathon_picks_up_where_this_one_stopped()
+    {
+        Assert.Equal(Ep(4), ChannelScheduleResolver.Resolve(Marathon(3), Denver, Anchor, Local(9, 23, 13, 10))!.Value.ItemId);
+    }
+
+    [Fact]
+    public void a_marathon_set_to_fill_runs_to_the_end_of_the_slot()
+    {
+        // Five hours of 43-minute episodes: six whole ones and a seventh cut at 18:00.
+        var parts = Marathon(0);
+        var last = ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 17, 50))!.Value;
+
+        Assert.Equal(Ep(7), last.ItemId);
+        Assert.Equal(Local(9, 16, 18), last.EndUtc);
+        // Next week continues after the one that was cut, not after six.
+        Assert.Equal(Ep(8), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 23, 13, 10))!.Value.ItemId);
+    }
 }

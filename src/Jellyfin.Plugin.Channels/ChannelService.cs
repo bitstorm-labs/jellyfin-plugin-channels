@@ -85,7 +85,9 @@ public sealed class ChannelService
     private CachedChannel Built(Guid channelId, ChannelDefinition definition)
     {
         var built = _cache.GetOrAdd(channelId, _ => Build(definition));
-        if (built.Generation == _generation)
+        // Also rebuilt once a day: "added within N days" ages items out with
+        // the calendar, and nothing in the library changes to say so.
+        if (built.Generation == _generation && built.BuiltOn == DateTime.UtcNow.Date)
         {
             return built;
         }
@@ -117,7 +119,9 @@ public sealed class ChannelService
                     snapshot,
                     (ChannelDays)part.Days,
                     SeasonWindow.From(part.SeasonStartMonthDay, part.SeasonEndMonthDay),
-                    part.EpisodePerAiring));
+                    part.EpisodePerAiring,
+                    ParseDate(part.FirstAiringDate, part.Name, definition.Name),
+                    part.EpisodesPerAiring));
             }
             catch (ArgumentOutOfRangeException ex)
             {
@@ -132,7 +136,7 @@ public sealed class ChannelService
             "Built channel {Channel}: {Dayparts} daypart(s), {Programs} program(s)",
             definition.Name, dayparts.Count, dayparts.Sum(d => d.Snapshot.Programs.Count));
 
-        return new CachedChannel(dayparts, ResolveTimeZone(definition.TimeZoneId), _generation);
+        return new CachedChannel(dayparts, ResolveTimeZone(definition.TimeZoneId), _generation, now.Date);
     }
 
     /// <summary>
@@ -153,5 +157,24 @@ public sealed class ChannelService
         }
     }
 
-    private sealed record CachedChannel(IReadOnlyList<Daypart> Dayparts, TimeZoneInfo TimeZone, int Generation);
+    private sealed record CachedChannel(IReadOnlyList<Daypart> Dayparts, TimeZoneInfo TimeZone, int Generation, DateTime BuiltOn);
+
+    /// <summary>An unparseable start date is logged and ignored rather than taking the daypart down.</summary>
+    private DateTime? ParseDate(string? value, string daypart, string channel)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTime.TryParseExact(value.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var date))
+        {
+            return date;
+        }
+
+        _logger.LogError("Daypart {Daypart} on channel {Channel} has an unreadable first airing date '{Value}'; ignoring it",
+            daypart, channel, value);
+        return null;
+    }
 }

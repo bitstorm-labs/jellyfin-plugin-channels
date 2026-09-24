@@ -144,12 +144,15 @@ public sealed class BlockResolver
                     continue;
                 }
 
-                results.AddRange(_libraryManager.GetItemList(new InternalItemsQuery
+                var episodes = _libraryManager.GetItemList(new InternalItemsQuery
                 {
                     ParentId = series.Id,
                     IncludeItemTypes = [BaseItemKind.Episode],
                     Recursive = true
-                }));
+                });
+                results.AddRange(filter.AddedWithinDays is { } days
+                    ? episodes.Where(e => e.DateCreated >= DateTime.UtcNow.AddDays(-days))
+                    : episodes);
             }
         }
 
@@ -195,6 +198,16 @@ public sealed class BlockResolver
         if (filter.MinYear is { } min)
         {
             query.MinPremiereDate = new DateTime(min, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        }
+
+        if (filter.AddedWithinDays is { } days)
+        {
+            // Episodes are judged individually after resolution; for the
+            // series query itself this would drop every long-running show.
+            if (query.IncludeItemTypes.Contains(BaseItemKind.Movie))
+            {
+                query.MinDateCreated = DateTime.UtcNow.AddDays(-days);
+            }
         }
 
         if (filter.MaxYear is { } max)

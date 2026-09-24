@@ -139,6 +139,7 @@
                     if (f.ExcludeGenres && f.ExcludeGenres.length) { parts.push('not ' + f.ExcludeGenres.join('/')); }
                     if (f.Tags && f.Tags.length) { parts.push('tag=' + f.Tags.join('/')); }
                     if (f.MinYear) { parts.push('from ' + f.MinYear); }
+                    if (f.AddedWithinDays) { parts.push('added in last ' + f.AddedWithinDays + 'd'); }
                     if (f.MaxYear) { parts.push('to ' + f.MaxYear); }
                     return name + ' — ' + (parts.length ? parts.join(', ') : 'everything');
                 }
@@ -190,6 +191,8 @@
                     Days: DAYS_ALL,
                     SeasonStartMonthDay: null,
                     EpisodePerAiring: false,
+                    EpisodesPerAiring: 1,
+                    FirstAiringDate: null,
                     SeasonEndMonthDay: null,
                     Blocks: [],
                     Ordering: ORDER_SHUFFLE,
@@ -259,6 +262,12 @@
                         + '<option value="0"' + (d.EpisodePerAiring ? '' : ' selected') + '>Continuously</option>'
                         + '<option value="1"' + (d.EpisodePerAiring ? ' selected' : '') + '>Next episode each airing</option>'
                         + '</select></div>'
+                        + '<div class="inputContainer" style="flex:1;min-width:7em;">'
+                        + '<input is="emby-input" type="number" min="0" class="dpPerAiring" data-i="' + i + '"'
+                        + ' label="Episodes per airing (0 = fill)" value="' + (d.EpisodesPerAiring == null ? 1 : d.EpisodesPerAiring) + '" /></div>'
+                        + '<div class="inputContainer" style="flex:1;min-width:9em;">'
+                        + '<input is="emby-input" type="text" class="dpFirstAiring" data-i="' + i + '"'
+                        + ' label="First airing" placeholder="YYYY-MM-DD" value="' + (d.FirstAiringDate || '') + '" /></div>'
                         + '<div class="inputContainer" style="flex:1;min-width:8em;">'
                         + '<input is="emby-input" type="text" class="dpSeasonStart" data-i="' + i + '"'
                         + ' label="Season from" placeholder="MM-DD"'
@@ -316,6 +325,15 @@
                 bind('dpEnd', 'change', function (el, i) { editing.Dayparts[i].EndMinutes = minutesOf(el.value); updateCoverage(); });
                 bind('dpDays', 'change', function (el, i) { editing.Dayparts[i].Days = parseInt(el.value, 10); });
                 bind('dpAiring', 'change', function (el, i) { editing.Dayparts[i].EpisodePerAiring = el.value === '1'; });
+                bind('dpPerAiring', 'change', function (el, i) {
+                    var n = parseInt(el.value, 10);
+                    editing.Dayparts[i].EpisodesPerAiring = isNaN(n) || n < 0 ? 1 : n;
+                });
+                bind('dpFirstAiring', 'change', function (el, i) {
+                    var v = (el.value || '').trim();
+                    editing.Dayparts[i].FirstAiringDate = /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+                    el.value = editing.Dayparts[i].FirstAiringDate || '';
+                });
                 bind('dpSeasonStart', 'change', function (el, i) {
                     editing.Dayparts[i].SeasonStartMonthDay = textToMonthDay(el.value);
                     el.value = monthDayToText(editing.Dayparts[i].SeasonStartMonthDay);
@@ -350,6 +368,7 @@
                     var genres = prompt('Genres (comma separated, blank for any)') || '';
                     var exclude = prompt('Leave out genres (comma separated, blank for none)') || '';
                     var minYear = prompt('Released from year (blank for any)') || '';
+                    var within = prompt('Only items added in the last N days (blank for any — e.g. 7 for "new this week")') || '';
                     done({
                         Kind: kind,
                         ItemIds: [],
@@ -358,6 +377,7 @@
                             ExcludeGenres: exclude.split(',').map(function (s) { return s.trim(); }).filter(Boolean),
                             Tags: [],
                             MinYear: minYear ? parseInt(minYear, 10) : null,
+                            AddedWithinDays: within ? parseInt(within, 10) : null,
                             MaxYear: null,
                             IncludeMovies: true,
                             IncludeEpisodes: true

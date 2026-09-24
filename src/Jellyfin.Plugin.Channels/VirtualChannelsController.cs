@@ -136,6 +136,7 @@ public class VirtualChannelsController : ControllerBase
             }
 
             entry.Name = item.Name;
+            entry.IsNew = item.DateCreated >= DateTime.UtcNow.AddDays(-7);
             entry.Type = item.GetBaseItemKind().ToString();
             entry.RuntimeTicks = item.RunTimeTicks;
             if (item is Episode episode)
@@ -197,6 +198,9 @@ public class GuideEntryDto
     public int? ProductionYear { get; set; }
 
     public long? RuntimeTicks { get; set; }
+
+    /// <summary>Added to the library within the last week — clients badge it "New".</summary>
+    public bool IsNew { get; set; }
 }
 
 public class ChannelSummary

@@ -47,15 +47,26 @@ public static class ChannelScheduleResolver
                 continue;
             }
 
-            if (AiringOn(part, localNow.Date, timeZone, anchorUtc) is { } airing
-                && nowUtc >= airing.StartUtc && nowUtc < airing.EndUtc)
+            var episodes = AiringOn(part, localNow.Date, timeZone, anchorUtc);
+            for (var i = 0; i < episodes.Count; i++)
             {
+                var airing = episodes[i];
+                if (nowUtc < airing.StartUtc || nowUtc >= airing.EndUtc)
+                {
+                    continue;
+                }
+
+                // Within a marathon the next programme is the next episode;
+                // after the last one it is whatever the channel airs next.
+                var next = i + 1 < episodes.Count
+                    ? episodes[i + 1].ItemId
+                    : FirstItemAfter(dayparts, timeZone, anchorUtc, airing.EndUtc);
                 return new ProgramSlot(
                     airing.ItemId,
                     nowUtc.Ticks - airing.StartUtc.Ticks,
                     airing.StartUtc,
                     airing.EndUtc,
-                    FirstItemAfter(dayparts, timeZone, anchorUtc, airing.EndUtc));
+                    next);
             }
         }
 
@@ -105,26 +116,68 @@ public static class ChannelScheduleResolver
     private readonly record struct Airing(Guid ItemId, DateTime StartUtc, DateTime EndUtc);
 
     /// <summary>
-    /// The episode a regular slot airs on a local date, or null if it does not
-    /// air that day. The Nth airing since the anchor plays the Nth programme,
-    /// looping; it starts on the slot and is cut at the slot's end if longer.
+    /// What a regular slot airs on a local date — one episode, or a marathon of
+    /// them back to back — or nothing if it does not air that day. The Nth
+    /// airing since the slot began continues the series where the previous
+    /// airing stopped, looping; everything is cut at the slot's end.
     /// </summary>
-    private static Airing? AiringOn(Daypart part, DateTime localDate, TimeZoneInfo timeZone, DateTime anchorUtc)
+    private static IReadOnlyList<Airing> AiringOn(Daypart part, DateTime localDate, TimeZoneInfo timeZone, DateTime anchorUtc)
     {
         var programs = part.Snapshot.Programs;
         if (programs.Count == 0 || !part.AirsOn(localDate))
         {
-            return null;
+            return [];
         }
 
         var anchorDate = TimeZoneInfo.ConvertTimeFromUtc(anchorUtc, timeZone).Date;
-        var index = AiringsBetween(part, anchorDate, localDate.Date);
-        var program = programs[(int)(index % programs.Count)];
-
+        var from = part.FirstAiring is { } first && first > anchorDate ? first : anchorDate;
+        var airingIndex = AiringsBetween(part, from, localDate.Date);
         var startUtc = ToUtc(localDate.Date + part.StartLocal, timeZone);
         var slotEndUtc = ToUtc(localDate.Date + part.EndLocal, timeZone);
-        var runEndUtc = startUtc.AddTicks(program.RuntimeTicks);
-        return new Airing(program.ItemId, startUtc, runEndUtc < slotEndUtc ? runEndUtc : slotEndUtc);
+        var slotTicks = slotEndUtc.Ticks - startUtc.Ticks;
+
+        var index = FirstEpisodeOf(part, airingIndex, slotTicks);
+        var airings = new List<Airing>();
+        var cursor = startUtc;
+        while (cursor < slotEndUtc && (part.EpisodesPerAiring == 0 || airings.Count < part.EpisodesPerAiring))
+        {
+            var program = programs[(int)(index % programs.Count)];
+            var end = cursor.AddTicks(program.RuntimeTicks);
+            airings.Add(new Airing(program.ItemId, cursor, end < slotEndUtc ? end : slotEndUtc));
+            cursor = end;
+            index++;
+        }
+
+        return airings;
+    }
+
+    /// <summary>
+    /// Where in the series the Nth airing starts. A fixed count is arithmetic;
+    /// "fill the slot" depends on runtimes, so it replays the earlier airings —
+    /// cheap, because it only walks runtimes, and it is what keeps next week
+    /// starting after the episode that was cut rather than after a guess.
+    /// </summary>
+    private static long FirstEpisodeOf(Daypart part, long airingIndex, long slotTicks)
+    {
+        if (part.EpisodesPerAiring > 0)
+        {
+            return airingIndex * part.EpisodesPerAiring;
+        }
+
+        var programs = part.Snapshot.Programs;
+        long index = 0;
+        for (long a = 0; a < airingIndex; a++)
+        {
+            long used = 0;
+            do
+            {
+                used += programs[(int)(index % programs.Count)].RuntimeTicks;
+                index++;
+            }
+            while (used < slotTicks);
+        }
+
+        return index;
     }
 
     /// <summary>How many times the slot airs on dates in [from, to).</summary>
@@ -175,11 +228,12 @@ public static class ChannelScheduleResolver
         {
             for (var day = 0; day <= 1; day++)
             {
-                if (AiringOn(part, today.AddDays(day), timeZone, anchorUtc) is { } airing
-                    && airing.StartUtc > afterUtc
-                    && (earliest is null || airing.StartUtc < earliest))
+                var episodes = AiringOn(part, today.AddDays(day), timeZone, anchorUtc);
+                if (episodes.Count > 0
+                    && episodes[0].StartUtc > afterUtc
+                    && (earliest is null || episodes[0].StartUtc < earliest))
                 {
-                    earliest = airing.StartUtc;
+                    earliest = episodes[0].StartUtc;
                 }
             }
         }
