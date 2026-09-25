@@ -179,11 +179,14 @@ public class VirtualChannelsController : ControllerBase
         // items and a week is thousands; a client fetching each one by id —
         // which is what the first tvOS guide did — cannot afford that, and a
         // guide that shows ids while it catches up is not a guide.
-        var details = guides.SelectMany(g => g.Programs.Select(p => p.ItemId))
-            .Distinct()
-            .Select(id => (id, item: _libraryManager.GetItemById(id)))
-            .Where(x => x.item is not null)
-            .ToDictionary(x => x.id, x => x.item!);
+        // One query for all of them. A lookup per id was ~1,500 round trips on a
+        // cold cache — 15 s of the first week of guide after a restart.
+        var ids = guides.SelectMany(g => g.Programs.Select(p => p.ItemId)).Distinct().ToArray();
+        var details = ids.Length == 0
+            ? new Dictionary<Guid, BaseItem>()
+            : _libraryManager.GetItemList(new InternalItemsQuery { ItemIds = ids })
+                .GroupBy(item => item.Id)
+                .ToDictionary(g => g.Key, g => g.First());
 
         foreach (var entry in guides.SelectMany(g => g.Programs))
         {

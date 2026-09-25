@@ -61,6 +61,11 @@ public sealed class ScheduleInvalidationListener : IHostedService
             plugin.ConfigurationChanged += OnConfigurationChanged;
         }
 
+        // Build every channel now rather than inside the first request: seven
+        // cold builds took ~10 s, which a client's first guide after a restart
+        // paid in full (26 s with the item lookups) and could time out on.
+        _ = Task.Run(() => _channels.Warm(), CancellationToken.None);
+
         return Task.CompletedTask;
     }
 
