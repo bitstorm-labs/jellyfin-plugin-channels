@@ -9,4 +9,8 @@ namespace Jellyfin.Plugin.Channels;
 /// a channel resolves positions years past its anchor, and rounding each program
 /// to whole seconds would let the error accumulate without bound.
 /// </param>
-public readonly record struct ChannelProgram(Guid ItemId, long RuntimeTicks);
+/// <param name="Group">
+/// The show it belongs to (series name, or a film's own title). The planner
+/// uses it to keep one show from airing twice in a row when it packs.
+/// </param>
+public readonly record struct ChannelProgram(Guid ItemId, long RuntimeTicks, string Group = "");

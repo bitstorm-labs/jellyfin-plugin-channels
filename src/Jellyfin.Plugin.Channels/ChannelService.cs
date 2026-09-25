@@ -72,7 +72,8 @@ public sealed class ChannelService
         }
 
         var built = Built(channelId, definition);
-        return ChannelScheduleResolver.Resolve(built.Dayparts, built.TimeZone, AnchorOf(definition), nowUtc);
+        return ChannelScheduleResolver.Resolve(
+            built.Dayparts, built.TimeZone, AnchorOf(definition), nowUtc, definition.AlignToHalfHour);
     }
 
     /// <summary>
@@ -88,7 +89,7 @@ public sealed class ChannelService
 
         var built = Built(channelId, definition);
         return ChannelScheduleResolver.ResolveRange(
-            built.Dayparts, built.TimeZone, AnchorOf(definition), fromUtc, toUtc, maxPrograms);
+            built.Dayparts, built.TimeZone, AnchorOf(definition), fromUtc, toUtc, maxPrograms, definition.AlignToHalfHour);
     }
 
     /// <summary>
@@ -106,7 +107,7 @@ public sealed class ChannelService
         }
 
         var ticks = definition.AnchorUtc.Ticks;
-        return new DateTime(ticks - (ticks % SlotPacker.HalfHourTicks), DateTimeKind.Utc);
+        return new DateTime(ticks - (ticks % TimeSpan.FromMinutes(30).Ticks), DateTimeKind.Utc);
     }
 
     /// <summary>Build every channel ahead of the first request. Called once at startup.</summary>
@@ -213,9 +214,7 @@ public sealed class ChannelService
             // A regular slot is "the next episode", which only means something
             // in series order.
             var ordering = part.EpisodePerAiring ? ChannelOrdering.Sequential : part.Ordering;
-            var snapshot = SnapshotBuilder.Build(
-                items, ordering, part.Seed, generation, now,
-                alignToHalfHour: definition.AlignToHalfHour && !part.EpisodePerAiring);
+            var snapshot = SnapshotBuilder.Build(items, ordering, part.Seed, generation, now);
 
             try
             {

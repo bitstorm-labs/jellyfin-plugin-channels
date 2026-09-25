@@ -54,18 +54,21 @@ public class AiringSlotTests
     }
 
     [Fact]
-    public void after_the_episode_the_channel_goes_back_to_its_normal_schedule()
+    public void after_the_episode_the_channel_resumes_with_a_programme_from_its_start()
     {
+        // Not joined partway: the channel's own schedule starts a fresh
+        // programme when the episode ends (on the half hour when aligned).
         var at = ChannelScheduleResolver.Resolve(Schedule(), Denver, Anchor, Local(9, 16, 19, 50))!.Value;
 
         Assert.Equal(Filler, at.ItemId);
+        Assert.Equal(Local(9, 16, 19, 43), at.StartUtc);
     }
 
     [Fact]
-    public void the_programme_before_the_slot_is_cut_at_the_slot_and_hands_over_to_the_episode()
+    public void nothing_starts_before_the_slot_that_would_run_into_it()
     {
-        // 25-minute filler from midnight puts one programme across the slot
-        // start: 18:45-19:10.
+        // 25-minute filler from midnight: 18:45-19:10 would cross the slot
+        // start, so it does not air; a break holds until the episode at 19:00.
         var parts = new List<Daypart>
         {
             Schedule()[0],
@@ -73,7 +76,7 @@ public class AiringSlotTests
         };
         var at = ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 18, 55))!.Value;
 
-        Assert.Equal(Filler, at.ItemId);
+        Assert.Equal(Guid.Empty, at.ItemId);
         Assert.Equal(Local(9, 16, 19), at.EndUtc);
         Assert.Equal(Ep(1), at.NextItemId);
     }
@@ -168,15 +171,15 @@ public class AiringSlotTests
     }
 
     [Fact]
-    public void a_marathon_set_to_fill_runs_to_the_end_of_the_slot()
+    public void a_marathon_set_to_fill_airs_only_whole_episodes()
     {
-        // Five hours of 43-minute episodes: six whole ones and a seventh cut at 18:00.
+        // Five hours of 43-minute episodes: six whole ones (13:00-17:18). The
+        // seventh would be cut at 18:00, so it is not started; next week opens
+        // with it.
         var parts = Marathon(0);
-        var last = ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 17, 50))!.Value;
 
-        Assert.Equal(Ep(7), last.ItemId);
-        Assert.Equal(Local(9, 16, 18), last.EndUtc);
-        // Next week continues after the one that was cut, not after six.
-        Assert.Equal(Ep(8), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 23, 13, 10))!.Value.ItemId);
+        Assert.Equal(Ep(6), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 17, 0))!.Value.ItemId);
+        Assert.NotEqual(Ep(7), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 16, 17, 50))!.Value.ItemId);
+        Assert.Equal(Ep(7), ChannelScheduleResolver.Resolve(parts, Denver, Anchor, Local(9, 23, 13, 10))!.Value.ItemId);
     }
 }

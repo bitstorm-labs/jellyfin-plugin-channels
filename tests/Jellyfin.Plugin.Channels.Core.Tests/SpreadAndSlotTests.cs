@@ -76,80 +76,6 @@ public class SpreadAndSlotTests
             first.Where(i => i.SeriesName != "A").Select(i => i.Id),
             after.Where(i => i.SeriesName != "A").Select(i => i.Id));
     }
-
-    [Fact]
-    public void every_slot_is_whole_half_hours_and_breaks_fill_the_rest()
-    {
-        var order = new[]
-        {
-            new ChannelProgram(Guid.NewGuid(), Min(22)),   // sitcom: 30-min slot, 8-min break
-            new ChannelProgram(Guid.NewGuid(), Min(118)),  // film: 2-hour slot, 2-min break
-            new ChannelProgram(Guid.NewGuid(), Min(11)),   // short videos share a slot
-            new ChannelProgram(Guid.NewGuid(), Min(12)),
-            new ChannelProgram(Guid.NewGuid(), Min(9)),    // does not fit after 23 min
-            new ChannelProgram(Guid.NewGuid(), Min(30)),   // exactly a slot: no break
-        };
-
-        var packed = SlotPacker.Pack(order, SlotPacker.HalfHourTicks);
-
-        Assert.Equal(order.Length, packed.Count(p => !SlotPacker.IsBreak(p)));
-        Assert.Equal(0, packed.Sum(p => p.RuntimeTicks) % SlotPacker.HalfHourTicks);
-        Assert.Equal(new[] { Min(22), Min(8), Min(118), Min(2), Min(11), Min(12), Min(7), Min(9), Min(21), Min(30) },
-            packed.Select(p => p.RuntimeTicks));
-
-        // Every programme that follows a break starts on the half hour; only
-        // one packed straight after another may start mid-slot.
-        long t = 0;
-        for (var i = 0; i < packed.Count; i++)
-        {
-            if (i == 0 || SlotPacker.IsBreak(packed[i - 1]))
-            {
-                Assert.Equal(0, t % SlotPacker.HalfHourTicks);
-            }
-
-            t += packed[i].RuntimeTicks;
-        }
-    }
-
-    [Fact]
-    public void a_break_resolves_as_no_item_and_points_at_what_follows()
-    {
-        var sitcom = Guid.NewGuid();
-        var next = Guid.NewGuid();
-        var snapshot = new ChannelSnapshot(
-            SlotPacker.Pack(new[] { new ChannelProgram(sitcom, Min(22)), new ChannelProgram(next, Min(22)) }, SlotPacker.HalfHourTicks),
-            1, Anchor);
-
-        var during = ScheduleResolver.Resolve(snapshot, Anchor, Anchor.AddMinutes(10))!.Value;
-        Assert.Equal(sitcom, during.ItemId);
-        Assert.Equal(next, during.NextItemId); // not the break
-
-        var inBreak = ScheduleResolver.Resolve(snapshot, Anchor, Anchor.AddMinutes(25))!.Value;
-        Assert.Equal(Guid.Empty, inBreak.ItemId);
-        Assert.Equal(next, inBreak.NextItemId);
-        Assert.Equal(Anchor.AddMinutes(30), inBreak.EndUtc);
-    }
-
-    [Fact]
-    public void the_guide_lists_a_programme_through_its_break()
-    {
-        var a = Guid.NewGuid();
-        var b = Guid.NewGuid();
-        var snapshot = new ChannelSnapshot(
-            SlotPacker.Pack(new[] { new ChannelProgram(a, Min(22)), new ChannelProgram(b, Min(22)) }, SlotPacker.HalfHourTicks),
-            1, Anchor);
-        var parts = new[] { new Daypart("All day", TimeSpan.Zero, TimeSpan.FromHours(24), snapshot) };
-
-        var guide = ChannelScheduleResolver.ResolveRange(parts, TimeZoneInfo.Utc, Anchor, Anchor, Anchor.AddHours(1));
-        Assert.Equal(new[] { a, b }, guide.Select(g => g.ItemId));
-        Assert.Equal(Anchor.AddMinutes(30), guide[0].EndUtc);
-        Assert.Equal(Anchor.AddMinutes(30), guide[1].StartUtc);
-
-        // Opened during the break, the finished programme is still listed until :30.
-        var mid = ChannelScheduleResolver.ResolveRange(parts, TimeZoneInfo.Utc, Anchor, Anchor.AddMinutes(25), Anchor.AddHours(1));
-        Assert.Equal(a, mid[0].ItemId);
-        Assert.Equal(Anchor.AddMinutes(30), mid[0].EndUtc);
-    }
 }
 
 public class SeriesOrderTests
@@ -176,7 +102,7 @@ public class SeriesOrderTests
 
         var snapshot = SnapshotBuilder.Build(items, ChannelOrdering.SeededShuffle, 5, 1, DateTime.UnixEpoch);
         var byId = items.ToDictionary(i => i.Id);
-        var aired = snapshot.Programs.Where(p => !SlotPacker.IsBreak(p)).Select(p => byId[p.ItemId]).ToList();
+        var aired = snapshot.Programs.Select(p => byId[p.ItemId]).ToList();
 
         foreach (var show in new[] { "Parks", "Ghosts", "Abbott" })
         {
@@ -185,39 +111,6 @@ public class SeriesOrderTests
         }
 
         Assert.Equal(0, aired.Zip(aired.Skip(1)).Count(p => p.First.SeriesName == p.Second.SeriesName));
-    }
-}
-
-public class PackingRepeatTests
-{
-    private sealed record Clip(Guid Id, long RuntimeTicks, string SeriesName) : IChannelItem
-    {
-        public int? SeasonNumber => null;
-        public int? EpisodeNumber => null;
-        public string SortName => SeriesName;
-    }
-
-    [Fact]
-    public void packing_short_videos_does_not_put_a_channel_next_to_itself()
-    {
-        // Short videos from three YouTube channels: packing pulls later ones
-        // forward, which must not pull the same channel's next video.
-        var items = new List<IChannelItem>();
-        var n = 0;
-        foreach (var (name, count) in new[] { ("GCN", 40), ("Builds", 30), ("Syd", 30) })
-        {
-            for (var i = 0; i < count; i++)
-            {
-                items.Add(new Clip(new Guid(++n, 0, 0, new byte[8]), (8 + (n * 7 % 11)) * TimeSpan.TicksPerMinute, name));
-            }
-        }
-
-        var snapshot = SnapshotBuilder.Build(items, ChannelOrdering.SeededShuffle, 3, 1, DateTime.UnixEpoch, alignToHalfHour: true);
-        var show = items.ToDictionary(i => i.Id, i => i.SeriesName);
-        var aired = snapshot.Programs.Where(p => !SlotPacker.IsBreak(p)).Select(p => show[p.ItemId]).ToList();
-
-        Assert.Equal(items.Count, aired.Count);
-        Assert.True(aired.Zip(aired.Skip(1)).Count(p => p.First == p.Second) <= 2);
     }
 }
 

@@ -71,18 +71,15 @@ public class ChannelScheduleResolverTests
     }
 
     [Fact]
-    public void a_program_running_past_its_daypart_is_cut_off_at_the_boundary()
+    public void a_daypart_ends_with_a_whole_programme_not_a_cut_one()
     {
-        // Drama runs 60m blocks; at 23:30 the program would run to 00:30, half an
-        // hour past the end of its daypart. Broadcast cuts away regardless.
+        // Drama runs 60m programmes from its opening, so the last one of the
+        // night ends exactly at midnight rather than being cut there.
         var at2330 = LocalDenver(2026, 6, 15, 23, 30);
         var slot = ChannelScheduleResolver.Resolve(Schedule(), Denver, Anchor, at2330)!.Value;
 
-        var midnight = LocalDenver(2026, 6, 16, 0);
         Assert.Equal(Drama, slot.ItemId);
-        Assert.Equal(midnight, slot.EndUtc);
-        // Nothing airs at midnight, so there is no next item to prepare.
-        Assert.Equal(Guid.Empty, slot.NextItemId);
+        Assert.Equal(LocalDenver(2026, 6, 16, 0), slot.EndUtc);
     }
 
     [Fact]
