@@ -5,7 +5,7 @@ namespace Jellyfin.Plugin.Channels;
 ///
 /// The schedule is never materialised as a list of airings — that would mean
 /// writing (and invalidating) a row per program per day, forever. Instead this
-/// ordered list plus an anchor is enough for <see cref="ScheduleResolver"/> to
+/// ordered list plus an anchor is enough for <see cref="DayPlanner"/> to
 /// compute what is airing at any instant, so a channel costs one small record
 /// regardless of how far ahead or behind it is queried.
 ///

@@ -161,32 +161,42 @@ Breaks *between* programs work as-is. Breaks *inside* a program need
 `ProgramSlot` to carry an end offset as well as a start, so playback can stop
 part-way, cut away, and resume.
 
-## The resolver
+## The planner
 
-`ScheduleResolver.Resolve(snapshot, anchorUtc, nowUtc)` returns the airing item,
-how far into it to start, when it began and ends, and what follows.
+`DayPlanner` lays each local day out in order, the way a broadcaster builds a
+schedule, and `ChannelScheduleResolver` answers "what is on" and the guide
+from those plans. Every programme starts from its beginning and plays to its
+end:
 
-The schedule is never materialised. Writing a row per airing per day would mean
-storing and invalidating an unbounded table; instead a running order plus an
-anchor is enough to compute any instant, so a channel costs one small record no
-matter how far ahead or behind it is queried.
+- **Each block opens with a programme at its start.** A daypart keeps its
+  place in its running order from one block to the next, so it never repeats
+  or skips — a continuous timeline could not promise this, and joined films
+  partway through whenever a daypart opened.
+- **A programme only starts if it ends before its block does.** Otherwise one
+  of the next few that fits airs (the skipped one goes first next time), else
+  a break. An all-day daypart carrying on past midnight is one timeline, so
+  its last film may run on.
+- **Half-hour alignment** (per channel, on by default): each slot ends on the
+  clock's next half hour; short programmes that fit are packed in (never the
+  show just aired) and the rest is a break, which clients fill with an "up
+  next" card.
+- **Regular slots** air whole episodes on the half hour, then the channel's
+  own schedule resumes with a fresh programme.
+- **Shows are spread through the running order** and play in series order —
+  first episode, through to the last, and again.
 
-Details that are load-bearing rather than incidental:
+Plans are memoised per built channel, so a week of guide is a few dictionary
+lookups once the days exist. Details that stay load-bearing:
 
-- **Runtimes are ticks, not seconds.** Channels get queried years past their
-  anchor; rounding each program to whole seconds lets the error accumulate.
-- **Intervals are half-open.** An instant landing exactly on a boundary belongs
-  to the program starting there. Treated as closed, a viewer tuning in on the
-  boundary joins the previous program at an offset equal to its whole runtime
-  and sees only its final frame.
-- **Before the anchor, the channel holds at its first program** rather than
-  extrapolating backwards into airings that never happened.
-- **Zero-runtime items are dropped on construction.** Left in the order they
-  either never air or divide the cycle by zero.
-- **Ordering does not use `Random`.** Its sequence for a given seed is not
-  stable across .NET versions, so an upgrade would silently reshuffle every
-  existing channel. `DeterministicShuffle` spells out splitmix64 + Fisher-Yates,
-  and a pinned vector in the tests fails if that ever changes.
+- **Runtimes are ticks, not seconds**, so nothing accumulates rounding error.
+- **Intervals are half-open**: an instant on a boundary belongs to the
+  programme starting there.
+- **Before the channel's anchor nothing airs**; its first day begins at the
+  anchor.
+- **Zero-runtime items are dropped** when the snapshot is built.
+- **Ordering does not use `Random`**, whose sequence is not stable across .NET
+  versions; `DeterministicShuffle` spells out splitmix64, with a pinned vector
+  in the tests.
 
 ## Toolchain
 

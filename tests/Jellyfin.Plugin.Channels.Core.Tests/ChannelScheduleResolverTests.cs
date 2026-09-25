@@ -53,8 +53,9 @@ public class ChannelScheduleResolverTests
     [Fact]
     public void a_single_all_day_daypart_behaves_exactly_like_an_undayparted_channel()
     {
-        // Guards the ordinary case against the dayparting machinery: one 24h
-        // block must resolve identically to calling the inner resolver directly.
+        // The ordinary case through the planner: one 24h block of 30-minute
+        // cartoons from midnight, asked at 03:17, is 17 minutes into the
+        // cartoon that started at 03:00.
         var snapshot = One(Cartoon, 30);
         var dayparts = new List<Daypart>
         {
@@ -62,12 +63,12 @@ public class ChannelScheduleResolverTests
         };
         var now = LocalDenver(2026, 6, 15, 3, 17);
 
-        var viaDayparts = ChannelScheduleResolver.Resolve(dayparts, Denver, Anchor, now)!.Value;
-        var direct = ScheduleResolver.Resolve(snapshot, Anchor, now)!.Value;
+        var slot = ChannelScheduleResolver.Resolve(dayparts, Denver, Anchor, now)!.Value;
 
-        Assert.Equal(direct.ItemId, viaDayparts.ItemId);
-        Assert.Equal(direct.OffsetTicks, viaDayparts.OffsetTicks);
-        Assert.Equal(direct.EndUtc, viaDayparts.EndUtc);
+        Assert.Equal(Cartoon, slot.ItemId);
+        Assert.Equal(LocalDenver(2026, 6, 15, 3, 0), slot.StartUtc);
+        Assert.Equal(TimeSpan.FromMinutes(17).Ticks, slot.OffsetTicks);
+        Assert.Equal(LocalDenver(2026, 6, 15, 3, 30), slot.EndUtc);
     }
 
     [Fact]
