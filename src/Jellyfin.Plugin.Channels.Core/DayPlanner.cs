@@ -197,7 +197,10 @@ public sealed class DayPlanner
             var programEnd = t.AddTicks(program.RuntimeTicks);
             Add(plan, program.ItemId, t, programEnd);
             last = program.Group;
-            var slotEnd = _align ? t.AddTicks(RoundUp(program.RuntimeTicks)) : programEnd;
+            // The slot ends on the next half hour of the clock — not half hours
+            // counted from this programme's start, or one late start would
+            // leave every programme after it off the half hour for good.
+            var slotEnd = _align ? ToHalfHour(programEnd) : programEnd;
             t = programEnd;
 
             // Pack short programmes into the rest of the slot.
@@ -217,7 +220,15 @@ public sealed class DayPlanner
 
             if (programEnd > end)
             {
-                return programEnd; // ran on past midnight
+                // Ran on past midnight: its break still takes it to the half
+                // hour, where tomorrow's schedule picks up.
+                if (_align && t < slotEnd)
+                {
+                    Add(plan, Guid.Empty, t, slotEnd);
+                    t = slotEnd;
+                }
+
+                return t;
             }
 
             var breakEnd = slotEnd < end ? slotEnd : end;
@@ -399,6 +410,9 @@ public sealed class DayPlanner
     }
 
     private static long RoundUp(long ticks) => (ticks + HalfHour - 1) / HalfHour * HalfHour;
+
+    /// <summary>The next half hour of the clock at or after an instant (UTC half hours are local ones wherever the offset is whole half hours).</summary>
+    private static DateTime ToHalfHour(DateTime utc) => new(RoundUp(utc.Ticks), DateTimeKind.Utc);
 
     /// <summary>Ticks from <paramref name="t"/> to the next half hour counted from <paramref name="origin"/>.</summary>
     private static long RoundUpFrom(DateTime origin, DateTime t)

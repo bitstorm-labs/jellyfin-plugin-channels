@@ -152,3 +152,30 @@ public class DayPlannerTests
         Assert.True(aired.Zip(aired.Skip(1)).Count(p => p.First == p.Second) <= 2);
     }
 }
+
+public class DayPlannerAlignmentTests
+{
+    private static readonly DateTime Day = new(2026, 9, 25, 0, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void a_film_running_past_midnight_leaves_tomorrow_on_the_half_hour()
+    {
+        var films = new ChannelSnapshot(new[]
+        {
+            new ChannelProgram(Guid.NewGuid(), TimeSpan.FromMinutes(23 * 60).Ticks, "Long"),
+            new ChannelProgram(Guid.NewGuid(), TimeSpan.FromMinutes(100).Ticks, "Film"),
+            new ChannelProgram(Guid.NewGuid(), TimeSpan.FromMinutes(95).Ticks, "Other"),
+            new ChannelProgram(Guid.NewGuid(), TimeSpan.FromMinutes(118).Ticks, "Third"),
+        }, 1, Day);
+        var parts = new[] { new Daypart("All", TimeSpan.Zero, TimeSpan.FromHours(24), films) };
+        var planner = new DayPlanner(parts, TimeZoneInfo.Utc, Day, alignToHalfHour: true);
+
+        foreach (var a in planner.Day(Day).Concat(planner.Day(Day.AddDays(1))).Concat(planner.Day(Day.AddDays(2))))
+        {
+            if (a.ItemId != Guid.Empty)
+            {
+                Assert.Equal(0, a.StartUtc.Ticks % TimeSpan.FromMinutes(30).Ticks);
+            }
+        }
+    }
+}
