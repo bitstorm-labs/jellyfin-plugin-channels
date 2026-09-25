@@ -90,6 +90,17 @@ public static class ChannelScheduleResolver
         // before then is a boundary too: the show goes on at 7, not whenever
         // the film before it happens to finish.
         var boundary = DaypartEndUtc(active, localNow, timeZone);
+
+        // A daypart that runs to midnight and airs again the next day does not
+        // end at midnight — its own timeline simply carries on. Cutting there
+        // split every programme spanning midnight in two, and the guide listed
+        // the same film twice, 23:30-24:00 and again from 00:00.
+        var localBoundary = TimeZoneInfo.ConvertTimeFromUtc(boundary, timeZone);
+        if (dayparts.FirstOrDefault(d => !d.EpisodePerAiring && d.Covers(localBoundary)) == active)
+        {
+            boundary = DateTime.MaxValue;
+        }
+
         if (NextAiringStart(dayparts, timeZone, anchorUtc, nowUtc) is { } slotStart && slotStart < boundary)
         {
             boundary = slotStart;
@@ -290,6 +301,36 @@ public static class ChannelScheduleResolver
             var entry = slot.Value.StartUtc < cursor
                 ? slot.Value with { StartUtc = cursor }
                 : slot.Value;
+
+            // A break belongs to the programme before it, the way a listing
+            // reads "7:00-7:30" for a 22-minute show. It is never a row of its
+            // own; one the guide opens inside is simply skipped.
+            if (entry.ItemId == Guid.Empty)
+            {
+                if (slots.Count > 0 && slots[^1].EndUtc == entry.StartUtc)
+                {
+                    slots[^1] = slots[^1] with { EndUtc = entry.EndUtc, NextItemId = entry.NextItemId };
+                }
+                else if (slots.Count == 0
+                         && Resolve(dayparts, timeZone, anchorUtc, slot.Value.StartUtc.AddTicks(-1)) is { } before
+                         && before.ItemId != Guid.Empty)
+                {
+                    // The guide opens during a break: the programme that just
+                    // finished is still "on" until its slot ends, as a listing
+                    // shows it, rather than leaving nothing at now.
+                    slots.Add(before with
+                    {
+                        StartUtc = cursor,
+                        OffsetTicks = cursor.Ticks - before.StartUtc.Ticks,
+                        EndUtc = entry.EndUtc,
+                        NextItemId = entry.NextItemId
+                    });
+                }
+
+                cursor = entry.EndUtc > cursor ? entry.EndUtc : cursor.AddMinutes(1);
+                continue;
+            }
+
             slots.Add(entry);
 
             // A programme that does not end after the cursor would walk the
@@ -321,6 +362,11 @@ public static class ChannelScheduleResolver
         // Resolve just past the boundary so the lookup lands in the next daypart
         // rather than on the closing edge of the one ending.
         var next = Resolve(dayparts, timeZone, anchorUtc, boundaryUtc.AddTicks(1));
+        if (next is { } slot && slot.ItemId == Guid.Empty)
+        {
+            return slot.NextItemId;
+        }
+
         return next?.ItemId ?? Guid.Empty;
     }
 }

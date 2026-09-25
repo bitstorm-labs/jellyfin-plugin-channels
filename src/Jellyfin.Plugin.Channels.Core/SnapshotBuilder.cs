@@ -14,7 +14,8 @@ public static class SnapshotBuilder
         ChannelOrdering ordering,
         ulong seed,
         int generation,
-        DateTime builtAtUtc)
+        DateTime builtAtUtc,
+        bool alignToHalfHour = false)
     {
         ArgumentNullException.ThrowIfNull(items);
 
@@ -33,10 +34,16 @@ public static class SnapshotBuilder
         }
 
         var ordered = ordering == ChannelOrdering.SeededShuffle
-            ? DeterministicShuffle.Shuffle(unique, seed, i => i.Id)
+            ? DeterministicShuffle.Spread(unique, seed, i => i.Id, i => i.SeriesName, SortSequentially)
             : SortSequentially(unique);
 
-        var programs = ordered.Select(i => new ChannelProgram(i.Id, i.RuntimeTicks)).ToArray();
+        IReadOnlyList<ChannelProgram> programs = ordered.Select(i => new ChannelProgram(i.Id, i.RuntimeTicks)).ToArray();
+        if (alignToHalfHour)
+        {
+            var show = unique.ToDictionary(i => i.Id, i => i.SeriesName);
+            programs = SlotPacker.Pack(programs, SlotPacker.HalfHourTicks, id => show[id]);
+        }
+
         return new ChannelSnapshot(programs, generation, builtAtUtc);
     }
 

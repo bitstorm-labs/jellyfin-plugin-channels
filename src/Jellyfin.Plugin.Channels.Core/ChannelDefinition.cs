@@ -114,6 +114,14 @@ public sealed class ChannelDefinition
     public string? Logo { get; set; }
 
     /// <summary>
+    /// Start programmes on the hour and half hour, the way broadcast TV does:
+    /// short programmes are packed into half-hour slots and what is left of a
+    /// slot is a break, which clients fill with an "up next" card. On unless
+    /// a channel turns it off.
+    /// </summary>
+    public bool AlignToHalfHour { get; set; } = true;
+
+    /// <summary>
     /// IANA zone deciding what "6:00 AM" means for this channel's dayparts.
     /// Stored per channel and never read from the host: a server's own zone is
     /// easy to get wrong, and a schedule quietly an hour out is worse than one

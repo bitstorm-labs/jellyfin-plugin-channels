@@ -34,6 +34,13 @@
                     <input is="emby-input" type="number" min="1" id="channelNumber" label="Channel number" />
                     <div class="fieldDescription">Blank to let the server pick a fixed number between 2 and 99.</div>
                 </div>
+                <div class="checkboxContainer">
+                    <label>
+                        <input is="emby-checkbox" type="checkbox" id="channelAlign" />
+                        <span>Start programmes on the hour and half hour</span>
+                    </label>
+                    <div class="fieldDescription">Short programmes share a half-hour slot; the rest of the slot shows "up next".</div>
+                </div>
                 <div class="selectContainer">
                     <select is="emby-select" id="channelLogo" label="Logo"></select>
                     <div class="fieldDescription">Shown on cards, in the guide, and faintly over the picture while the channel plays.</div>
@@ -228,6 +235,7 @@
                 $('channelDescription').value = editing.Description || '';
                 $('channelNumber').value = editing.Number == null ? '' : editing.Number;
                 $('channelLogo').innerHTML = logoOptions(editing.Logo || '', 'None');
+                $('channelAlign').checked = editing.AlignToHalfHour !== false;
                 buildTimeZones(editing.TimeZoneId);
                 renderDayparts();
 
@@ -509,6 +517,7 @@
                 var number = parseInt($('channelNumber').value, 10);
                 editing.Number = isNaN(number) || number < 1 ? null : number;
                 editing.Logo = $('channelLogo').value || null;
+                editing.AlignToHalfHour = $('channelAlign').checked;
                 editing.TimeZoneId = $('channelTimeZone').value;
 
                 if (!editing.Name) { Dashboard.alert('Give the channel a name.'); return; }

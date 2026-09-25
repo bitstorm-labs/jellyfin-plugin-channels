@@ -72,7 +72,7 @@ public sealed class ChannelService
         }
 
         var built = Built(channelId, definition);
-        return ChannelScheduleResolver.Resolve(built.Dayparts, built.TimeZone, definition.AnchorUtc, nowUtc);
+        return ChannelScheduleResolver.Resolve(built.Dayparts, built.TimeZone, AnchorOf(definition), nowUtc);
     }
 
     /// <summary>
@@ -88,7 +88,25 @@ public sealed class ChannelService
 
         var built = Built(channelId, definition);
         return ChannelScheduleResolver.ResolveRange(
-            built.Dayparts, built.TimeZone, definition.AnchorUtc, fromUtc, toUtc, maxPrograms);
+            built.Dayparts, built.TimeZone, AnchorOf(definition), fromUtc, toUtc, maxPrograms);
+    }
+
+    /// <summary>
+    /// The instant the channel's timelines count from. Slots are whole half
+    /// hours, so a timeline anchored on the half hour starts every slot on :00
+    /// or :30; the stored anchor is whenever the channel was created, so it is
+    /// floored to the half hour. (Zone offsets are whole half hours almost
+    /// everywhere; Nepal's +5:45 would land slots on :15/:45.)
+    /// </summary>
+    private static DateTime AnchorOf(ChannelDefinition definition)
+    {
+        if (!definition.AlignToHalfHour)
+        {
+            return definition.AnchorUtc;
+        }
+
+        var ticks = definition.AnchorUtc.Ticks;
+        return new DateTime(ticks - (ticks % SlotPacker.HalfHourTicks), DateTimeKind.Utc);
     }
 
     /// <summary>Build every channel ahead of the first request. Called once at startup.</summary>
@@ -195,7 +213,9 @@ public sealed class ChannelService
             // A regular slot is "the next episode", which only means something
             // in series order.
             var ordering = part.EpisodePerAiring ? ChannelOrdering.Sequential : part.Ordering;
-            var snapshot = SnapshotBuilder.Build(items, ordering, part.Seed, generation, now);
+            var snapshot = SnapshotBuilder.Build(
+                items, ordering, part.Seed, generation, now,
+                alignToHalfHour: definition.AlignToHalfHour && !part.EpisodePerAiring);
 
             try
             {

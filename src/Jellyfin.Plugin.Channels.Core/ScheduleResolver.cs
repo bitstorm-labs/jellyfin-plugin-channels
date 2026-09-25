@@ -57,7 +57,12 @@ public static class ScheduleResolver
 
         var program = snapshot.Programs[index];
         var offsetTicks = cycleOffset - consumed;
+        // What follows is the next real programme; a break is not one.
         var next = snapshot.Programs[(index + 1) % snapshot.Programs.Count];
+        for (var step = 2; SlotPacker.IsBreak(next) && step <= snapshot.Programs.Count; step++)
+        {
+            next = snapshot.Programs[(index + step) % snapshot.Programs.Count];
+        }
 
         // Derive the boundaries from the instant we were asked about, so start
         // and end stay consistent with the offset even when elapsed was clamped.

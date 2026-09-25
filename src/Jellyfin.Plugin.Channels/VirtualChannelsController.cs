@@ -127,6 +127,30 @@ public class VirtualChannelsController : ControllerBase
         }
 
         var value = slot.Value;
+        if (value.ItemId == Guid.Empty)
+        {
+            // A break before the next slot. The answer is the programme that
+            // starts when it ends, from its beginning, flagged so a client can
+            // show "up next" until then. A client that predates breaks ignores
+            // the flag and simply starts the programme a few minutes early —
+            // the right failure: nothing stops, nothing plays twice.
+            var upcoming = _channels.GetNowPlaying(channelId, value.EndUtc);
+            if (upcoming is null || upcoming.Value.ItemId == Guid.Empty)
+            {
+                return NoContent();
+            }
+
+            return Ok(new NowPlayingDto
+            {
+                ItemId = upcoming.Value.ItemId,
+                StartPositionSeconds = 0,
+                StartUtc = upcoming.Value.StartUtc,
+                EndUtc = upcoming.Value.EndUtc,
+                NextItemId = upcoming.Value.NextItemId == Guid.Empty ? null : upcoming.Value.NextItemId,
+                IsBreak = true
+            });
+        }
+
         return Ok(new NowPlayingDto
         {
             ItemId = value.ItemId,
@@ -304,4 +328,10 @@ public class NowPlayingDto
 
     /// <summary>What follows, so a client can prepare it before the boundary.</summary>
     public Guid? NextItemId { get; set; }
+
+    /// <summary>
+    /// The channel is between slots: <see cref="ItemId"/> starts at
+    /// <see cref="StartUtc"/>, from its beginning. Show "up next" until then.
+    /// </summary>
+    public bool IsBreak { get; set; }
 }
