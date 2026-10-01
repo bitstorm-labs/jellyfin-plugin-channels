@@ -83,6 +83,28 @@ public class VirtualChannelsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<IEnumerable<string>> GetLogoKeys() => Ok(ChannelLogos.Keys);
 
+    /// <summary>
+    /// A shipped logo by key, as a PNG — for a logo picker, which shows logos
+    /// no channel wears yet. Anonymous and cacheable like the channel logo.
+    /// </summary>
+    /// <response code="404">No such logo.</response>
+    [HttpGet("Logos/{key}")]
+    [AllowAnonymous]
+    [Produces("image/png")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult GetLogoByKey([FromRoute] string key, [FromQuery] string? style = null)
+    {
+        var stream = ChannelLogos.Open(key, string.Equals(style, "mono", StringComparison.OrdinalIgnoreCase));
+        if (stream is null)
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "public, max-age=86400";
+        return File(stream, "image/png");
+    }
+
     private static string? LogoFor(ChannelDefinition channel)
     {
         TimeZoneInfo zone;
