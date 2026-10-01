@@ -110,6 +110,18 @@ public sealed class ChannelService
         return new DateTime(ticks - (ticks % TimeSpan.FromMinutes(30).Ticks), DateTimeKind.Utc);
     }
 
+    /// <summary>
+    /// The items each daypart of a channel currently airs, indexed like the
+    /// definition's dayparts (a daypart dropped for bad times reads empty).
+    /// Answered from the cached running order — the same one the guide uses —
+    /// so asking costs no library walk once the channel is built.
+    /// </summary>
+    public IReadOnlyList<IReadOnlySet<Guid>> GetResolvedItems(Guid channelId)
+    {
+        var definition = GetChannel(channelId);
+        return definition is null ? [] : Built(channelId, definition).ResolvedByDefinition;
+    }
+
     /// <summary>Build every channel ahead of the first request. Called once at startup.</summary>
     public void Warm()
     {
@@ -207,6 +219,7 @@ public sealed class ChannelService
         // leave this snapshot stale, not be stamped as already included.
         var generation = Volatile.Read(ref _generation);
         var dayparts = new List<Daypart>();
+        var resolved = new List<IReadOnlySet<Guid>>();
 
         foreach (var part in definition.Dayparts)
         {
@@ -215,6 +228,7 @@ public sealed class ChannelService
             // in series order.
             var ordering = part.EpisodePerAiring ? ChannelOrdering.Sequential : part.Ordering;
             var snapshot = SnapshotBuilder.Build(items, ordering, part.Seed, generation, now);
+            resolved.Add(snapshot.Programs.Select(p => p.ItemId).ToHashSet());
 
             try
             {
@@ -242,7 +256,7 @@ public sealed class ChannelService
             "Built channel {Channel}: {Dayparts} daypart(s), {Programs} program(s)",
             definition.Name, dayparts.Count, dayparts.Sum(d => d.Snapshot.Programs.Count));
 
-        return new CachedChannel(dayparts, ResolveTimeZone(definition.TimeZoneId), generation, now.Date);
+        return new CachedChannel(dayparts, resolved, ResolveTimeZone(definition.TimeZoneId), generation, now.Date);
     }
 
     /// <summary>
@@ -263,7 +277,10 @@ public sealed class ChannelService
         }
     }
 
-    private sealed record CachedChannel(IReadOnlyList<Daypart> Dayparts, TimeZoneInfo TimeZone, int Generation, DateTime BuiltOn);
+    private sealed record CachedChannel(
+        IReadOnlyList<Daypart> Dayparts,
+        IReadOnlyList<IReadOnlySet<Guid>> ResolvedByDefinition,
+        TimeZoneInfo TimeZone, int Generation, DateTime BuiltOn);
 
     /// <summary>An unparseable start date is logged and ignored rather than taking the daypart down.</summary>
     private DateTime? ParseDate(string? value, string daypart, string channel)

@@ -137,6 +137,15 @@ public sealed class ChannelDefinition
     public DateTime AnchorUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary>
+    /// The BoxSet the management API created to hold films added to this
+    /// channel from a client ("SashimiTV · {Name}"). Null until a film is
+    /// first added. A nullable Guid survives both the JSON API and
+    /// XmlSerializer, like the other primitives here. The plugin owns this
+    /// collection: deleting the channel deletes it.
+    /// </summary>
+    public Guid? ManagedCollectionId { get; set; }
+
+    /// <summary>
     /// The broadcast day. A single daypart covering 00:00-24:00 is the ordinary
     /// undayparted channel; gaps between dayparts are legal and mean off air.
     /// </summary>

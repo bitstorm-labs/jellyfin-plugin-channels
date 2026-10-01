@@ -28,6 +28,30 @@ join-in-progress offset and **must not** be written back as playback progress.
 | 2 | tvOS/iOS channel list and channel playback mode | not started |
 | 3 | Roku and Android | not started |
 
+### Management API (0.11)
+
+Administrators only (`RequiresElevation`), reads included. Clients use it for
+"Add to Channel" and a Manage Channels screen; dayparts, seasons and filter
+rules stay in the dashboard.
+
+| | |
+|---|---|
+| `GET /VirtualChannels/Manage` | every channel with its dayparts, added titles and rule summary |
+| `GET /VirtualChannels/Manage/Membership?itemId=` | `Added` / `ViaRule` / `None` for every channel and daypart |
+| `POST /VirtualChannels/Manage` | new all-day channel `{ Name, Logo?, SeedItemId? }` → 201 |
+| `PATCH /VirtualChannels/Manage/{id}` | `{ Name?, Logo? }`; `Logo: ""` removes the logo |
+| `DELETE /VirtualChannels/Manage/{id}` | the channel and the collection the plugin made for it |
+| `POST /VirtualChannels/Manage/{id}/Items` | `{ ItemId, DaypartIndex? }`, idempotent |
+| `DELETE /VirtualChannels/Manage/{id}/Items/{itemId}?daypartIndex=` | added titles only; rule-sourced ones are 404 |
+| `GET /VirtualChannels/Logos/{key}` | a shipped logo by key (`?style=mono`), for a picker |
+
+A series (or an episode's or season's series) joins the daypart's first Series
+block. A film joins the channel's own BoxSet, "SashimiTV · {Name}", created on
+first use and recorded as `ManagedCollectionId`; a Collection block for it is
+added to the daypart. Every edit runs under one lock on a copy of the
+configuration and is saved through `UpdateConfiguration`, the dashboard's own
+path, so it invalidates the running orders the same way.
+
 ## Why the schedule lives on the server
 
 Each client could compute its own schedule, but then the resolver is written
