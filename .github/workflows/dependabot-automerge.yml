@@ -1,0 +1,60 @@
+name: Dependabot auto-merge
+
+# Merges Dependabot's patch/minor PRs (including grouped ones) once CI passes.
+# Major bumps are left for a human.
+#
+# This repo is private on GitHub Free, which offers neither branch
+# protection (required checks) nor GitHub's auto-merge.
+# So this job waits for the CI check ("build-and-test") itself and merges only the
+# exact commit that passed (--match-head-commit). A failed check leaves the PR
+# open for review.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2.5.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for CI, then merge patch/minor updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHECK: build-and-test
+        run: |
+          set -euo pipefail
+          # Poll up to ~50 minutes; the newest run of the check decides.
+          for _ in $(seq 1 100); do
+            state=$(gh api "repos/$GH_REPO/commits/$HEAD_SHA/check-runs?check_name=$CHECK" --jq '
+              [.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last
+              | if . == null then "missing"
+                elif .status != "completed" then "pending"
+                else .conclusion end')
+            echo "$CHECK: $state"
+            case "$state" in
+              success)
+                gh pr merge "$PR_URL" --merge --match-head-commit "$HEAD_SHA"
+                exit 0 ;;
+              missing|pending) sleep 30 ;;
+              *)
+                echo "::notice::$CHECK finished as '$state'; leaving the PR for review."
+                exit 0 ;;
+            esac
+          done
+          echo "::error::$CHECK did not finish within the polling window"
+          exit 1

@@ -1,0 +1,45 @@
+# Dependency updates. Policy (same across the bitstorm-labs repos):
+#   - weekly, Monday 05:00 America/Denver
+#   - minor + patch grouped into one PR per ecosystem; majors get their own PRs
+#   - .github/workflows/dependabot-automerge.yml merges patch/minor PRs after
+#     the "build-and-test" check passes; majors wait for review
+# Actions are pinned to commit SHAs with a "# vX.Y.Z" comment; Dependabot bumps
+# the SHA and the comment together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  # NuGet. Jellyfin.* (Jellyfin.Controller, Jellyfin.Model, Jellyfin.Common,
+  # Jellyfin.Extensions, ...) is ignored for every update type: the plugin
+  # must be compiled against the same Jellyfin version the server runs (the
+  # server rejects or breaks on a mismatched ABI), so those bumps happen by
+  # hand when the server is upgraded. The target framework is tied to that
+  # Jellyfin version too; Dependabot never changes <TargetFramework>, and it
+  # should be bumped by hand with Jellyfin, not here.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: America/Denver
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "Jellyfin.*"
+    groups:
+      nuget-minor-patch:
+        update-types: [minor, patch]
