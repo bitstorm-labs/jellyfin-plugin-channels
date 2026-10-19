@@ -5,32 +5,57 @@ the wall clock whether or not anyone is watching, so tuning in joins whatever is
 airing — you miss what already went out, and leaving and coming back later puts
 you on the *then-current* program rather than resuming where you stopped.
 
-## Status: Phase 1
+## Requirements and install
 
-Channels can be defined in the Jellyfin dashboard and queried over HTTP. No
-client support yet — nothing plays them.
+- **Jellyfin 12** (the plugin builds against `Jellyfin.Controller` 12.1.0, which is net10.0 only).
+- Current version: **0.11.0**. There is no GitHub release or plugin repository
+  manifest yet, so install by hand:
 
-### API
+1. Build it (needs the .NET 10 SDK):
+   ```bash
+   dotnet build src/Jellyfin.Plugin.Channels -c Release
+   ```
+2. **Stop Jellyfin.** Copying a DLL over a running server makes it look like
+   Jellyfin crashed.
+3. Copy `Jellyfin.Plugin.Channels.dll` and `Jellyfin.Plugin.Channels.Core.dll`
+   from `src/Jellyfin.Plugin.Channels/bin/Release/net10.0/` into
+   `<jellyfin-config>/plugins/Channels_0.11.0.0/`.
+4. Start Jellyfin. Define channels under Dashboard, Plugins, Channels.
+
+## Works with Sashimi
+
+Sashimi shows your channels in a row on the home screen, a TV guide that looks a
+week ahead, and plays a channel from whatever is airing now.
+
+| Platform | Channels row, guide, playback | Manage channels (admin) |
+|---|---|---|
+| Apple TV | yes | yes |
+| iPhone and iPad | yes | yes |
+| Roku | yes | yes |
+| Android | not yet | not yet |
+
+Without the plugin, Sashimi simply has no channels row.
+
+## API
+
+Signed-in users:
 
 | | |
 |---|---|
-| `GET /VirtualChannels` | every configured channel |
+| `GET /VirtualChannels` | every configured channel: id, number, name, description, time zone, daypart count, logo key |
+| `GET /VirtualChannels/Guide?hours=3` | what every channel airs over the next `hours` (0.5 to 168), in one call |
 | `GET /VirtualChannels/{id}/NowPlaying` | the airing item, the offset to start at, when it ends, and what follows |
+| `GET /VirtualChannels/{id}/Logo` | the channel's logo as a PNG (`?style=mono` for the white version); anonymous |
+| `GET /VirtualChannels/Logos` | the keys of the logos the plugin ships |
+| `GET /VirtualChannels/Logos/{key}` | one shipped logo (`?style=mono`); anonymous |
 
-`NowPlaying` answers `204 No Content` when the channel is off air — a gap in the
+`NowPlaying` answers `204 No Content` when the channel is off air. A gap in the
 schedule is a normal state, not an error. `StartPositionSeconds` is a
 join-in-progress offset and **must not** be written back as playback progress.
 
-| Phase | Scope | State |
-|-------|-------|-------|
-| 0 | Schedule resolver, dayparting, deterministic ordering, with tests | **done** |
-| 1 | Snapshot builder, change listener, REST API, config page, seasons, exclusions | **done** |
-| 2 | tvOS/iOS channel list and channel playback mode | not started |
-| 3 | Roku and Android | not started |
+### Management API
 
-### Management API (0.11)
-
-Administrators only (`RequiresElevation`), reads included. Clients use it for
+Administrators only (`RequiresElevation`), reads included. Sashimi uses it for
 "Add to Channel" and a Manage Channels screen; dayparts, seasons and filter
 rules stay in the dashboard.
 
@@ -43,7 +68,6 @@ rules stay in the dashboard.
 | `DELETE /VirtualChannels/Manage/{id}` | the channel and the collection the plugin made for it |
 | `POST /VirtualChannels/Manage/{id}/Items` | `{ ItemId, DaypartIndex? }`, idempotent |
 | `DELETE /VirtualChannels/Manage/{id}/Items/{itemId}?daypartIndex=` | added titles only; rule-sourced ones are 404 |
-| `GET /VirtualChannels/Logos/{key}` | a shipped logo by key (`?style=mono`), for a picker |
 
 A series (or an episode's or season's series) joins the daypart's first Series
 block. A film joins the channel's own BoxSet, "SashimiTV · {Name}", created on
@@ -75,7 +99,7 @@ It also puts three problems where they can actually be solved:
 
 ```
 src/Jellyfin.Plugin.Channels.Core    scheduling logic — no Jellyfin dependency
-src/Jellyfin.Plugin.Channels         plugin shell (Phase 1+)
+src/Jellyfin.Plugin.Channels         plugin shell
 tests/…Core.Tests                    xunit
 ```
 
@@ -226,12 +250,10 @@ lookups once the days exist. Details that stay load-bearing:
 
 `Core` and its tests build on .NET 9. The plugin shell targets **net10.0**,
 because `Jellyfin.Controller` 12.1.0 ships net10.0 only — a Jellyfin 12 plugin
-has to follow. Building the shell needs the .NET 10 SDK; Phase 0 does not.
+has to follow. Building the shell needs the .NET 10 SDK; Core does not.
 
-The SDK is installed per-user at `~/.dotnet` (no sudo required, and it does not
-disturb the system install at `/usr/local/share/dotnet`). SDK 10 compiles both
-target frameworks, and the .NET 9 *runtime* is installed alongside it because
-running the net9 test assembly needs it.
+If the .NET 10 SDK is installed per-user (for example under `~/.dotnet`), point at it.
+The .NET 9 *runtime* is also needed to run the net9 test assembly.
 
 ```bash
 export DOTNET_ROOT="$HOME/.dotnet"
