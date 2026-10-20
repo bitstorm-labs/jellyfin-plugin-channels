@@ -287,3 +287,10 @@ with "Child node exited prematurely". Reinstall into a clean directory instead.
 ## Licence
 
 MIT.
+
+## Credits
+
+Built on [Jellyfin](https://jellyfin.org/) (the Jellyfin project, GPL-2.0) and its
+`Jellyfin.Controller` plugin API. Sashimi is a separate Bitstorm Labs client for
+Jellyfin. Jellyfin is a separate project under its own license, and this plugin is
+not affiliated with or endorsed by it.
