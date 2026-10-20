@@ -1,0 +1,11 @@
+[
+  {
+    "guid": "7a3f1c92-5d64-4b08-9f21-6c8e5b0a4d73",
+    "name": "Channels",
+    "description": "Builds 24/7 virtual channels from your own library. A channel runs on the wall clock whether or not anyone is watching, so tuning in joins whatever is airing rather than resuming where you left off. Requires Jellyfin 12.",
+    "overview": "24/7 virtual channels built from your own Jellyfin library.",
+    "owner": "Bitstorm Labs",
+    "category": "LiveTV",
+    "versions": []
+  }
+]

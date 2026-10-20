@@ -1,0 +1,105 @@
+name: Release
+
+# Pushing a tag like vX.Y.Z builds the plugin, attaches the
+# zip to a GitHub release, and records the release in manifest.json (the file
+# Jellyfin reads when this repo is added as a plugin repository).
+# Run it by hand (workflow_dispatch) with an existing tag to publish a release
+# for a tag that predates this workflow.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to release, for example v0.1.1
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          # Core and its tests are net9.0; the plugin shell is net10.0
+          # because Jellyfin.Controller 12.1.0 ships net10.0 only.
+          dotnet-version: |
+            9.0.x
+            10.0.x
+      - name: Test
+        run: dotnet test tests/Jellyfin.Plugin.Channels.Core.Tests
+      # Stamp the assembly with the tag's version so Jellyfin reports what is
+      # actually installed, whatever the csproj says.
+      - name: Publish
+        run: |
+          VERSION="${TAG#v}"
+          dotnet publish src/Jellyfin.Plugin.Channels -c Release -o publish \
+            -p:Version="$VERSION.0" \
+            -p:AssemblyVersion="$VERSION.0" \
+            -p:FileVersion="$VERSION.0"
+      - name: Package
+        id: package
+        run: |
+          VERSION="${TAG#v}"
+          mkdir -p artifact
+          ZIP="artifact/channels_${VERSION}.zip"
+          zip -j "$ZIP" publish/Jellyfin.Plugin.Channels.dll publish/Jellyfin.Plugin.Channels.Core.dll
+          CHECKSUM=$(md5sum "$ZIP" | cut -d' ' -f1)
+          echo "$CHECKSUM" > artifact/checksum.txt
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ env.TAG }}
+          files: artifact/*
+      # CI appends this release's entry and commits manifest.json to main, so
+      # older versions stay discoverable.
+      - name: Update manifest.json
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 .github/scripts/update_manifest.py \
+            --manifest manifest.json \
+            --version "${{ steps.package.outputs.version }}.0" \
+            --checksum "${{ steps.package.outputs.checksum }}" \
+            --source-url "https://github.com/${{ github.repository }}/releases/download/${TAG}/channels_${{ steps.package.outputs.version }}.zip" \
+            --target-abi "12.1.0.0" \
+            --changelog "Release ${{ steps.package.outputs.version }}. See https://github.com/${{ github.repository }}/releases/tag/${TAG} for details."
+      - name: Commit manifest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          if git diff --cached --quiet; then
+            echo "manifest.json unchanged, nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore: update manifest.json for ${TAG}"
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "manifest.json pushed (attempt $attempt)"
+              exit 0
+            fi
+            echo "push rejected, regenerating on origin/main (attempt $attempt)"
+            git fetch origin main
+            git reset --hard origin/main
+            python3 .github/scripts/update_manifest.py \
+              --manifest manifest.json \
+              --version "${{ steps.package.outputs.version }}.0" \
+              --checksum "${{ steps.package.outputs.checksum }}" \
+              --source-url "https://github.com/${{ github.repository }}/releases/download/${TAG}/channels_${{ steps.package.outputs.version }}.zip" \
+              --target-abi "12.1.0.0" \
+              --changelog "Release ${{ steps.package.outputs.version }}. See https://github.com/${{ github.repository }}/releases/tag/${TAG} for details."
+            git add manifest.json
+            git commit -m "chore: update manifest.json for ${TAG}" || true
+            sleep 5
+          done
+          echo "::error::could not push manifest.json after 5 attempts; ${TAG} is released but not listed in the plugin repository" >&2
+          exit 1

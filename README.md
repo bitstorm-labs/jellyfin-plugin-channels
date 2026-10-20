@@ -8,8 +8,24 @@ you on the *then-current* program rather than resuming where you stopped.
 ## Requirements and install
 
 - **Jellyfin 12** (the plugin builds against `Jellyfin.Controller` 12.1.0, which is net10.0 only).
-- Current version: **0.11.0**. There is no GitHub release or plugin repository
-  manifest yet, so install by hand:
+- Current version: **0.11.0**.
+
+### Install from the plugin repository
+
+1. In Jellyfin, go to Dashboard, Plugins, Repositories, and add this repository URL:
+
+   ```
+   https://raw.githubusercontent.com/bitstorm-labs/jellyfin-plugin-channels/main/manifest.json
+   ```
+2. Open Dashboard, Plugins, Catalog, install **Channels**, and restart Jellyfin.
+3. Define channels under Dashboard, Plugins, Channels.
+
+`raw.githubusercontent.com` caches for a few minutes, so a repository added right
+after a release can return a stale manifest. Wait a minute and retry.
+
+### Install by hand
+
+If you would rather build it yourself:
 
 1. Build it (needs the .NET 10 SDK):
    ```bash
