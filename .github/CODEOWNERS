@@ -1,0 +1,34 @@
+# Code owners are asked to review changes to these paths. main does not
+# require pull requests yet: the release workflow pushes manifest.json straight
+# to main with GITHUB_TOKEN, which no ruleset can exempt. Once that push uses a
+# deploy key, the "main: reviews and checks" ruleset can require code-owner
+# review here too.
+#
+# They cover everything that runs with repository credentials or decides
+# what ships: workflows and their scripts, the build and release config, and
+# the files users install from. Everything else merges on green CI.
+#
+# Only org admins (and Dependabot) can push branches to this repository, so
+# contributors open pull requests from a fork.
+
+/.github/                @mondominator
+*.csproj                 @mondominator
+*.props                  @mondominator
+*.targets                @mondominator
+*.sln                    @mondominator
+*.slnx                   @mondominator
+global.json              @mondominator
+nuget.config             @mondominator
+NuGet.Config             @mondominator
+/build.yaml              @mondominator
+/meta.json               @mondominator
+/manifest.json           @mondominator
+
+# Agent and editor config runs on the maintainer's machine (hooks, commands,
+# instructions), so it gets the same review as CI.
+/CLAUDE.md               @mondominator
+/AGENTS.md               @mondominator
+/.claude/                @mondominator
+/.codex/                 @mondominator
+/.githooks/              @mondominator
+/.vscode/                @mondominator
