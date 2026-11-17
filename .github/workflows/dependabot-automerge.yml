@@ -48,7 +48,16 @@ jobs:
             echo "$CHECK: $state"
             case "$state" in
               success)
-                gh pr merge "$PR_URL" --merge --match-head-commit "$HEAD_SHA"
+                # Dependabot closes a PR when a newer one supersedes it, which can
+                # happen while we wait for CI. Nothing to merge then.
+                if ! gh pr merge "$PR_URL" --merge --match-head-commit "$HEAD_SHA"; then
+                  pr_state=$(gh pr view "$PR_URL" --json state --jq .state)
+                  if [ "$pr_state" != OPEN ]; then
+                    echo "::notice::PR is $pr_state (superseded); nothing to merge."
+                    exit 0
+                  fi
+                  exit 1
+                fi
                 exit 0 ;;
               missing|pending) sleep 30 ;;
               *)
